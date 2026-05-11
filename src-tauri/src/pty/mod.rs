@@ -47,4 +47,8 @@ impl PtySupervisor {
     pub fn snapshot(&self, node_id: &str) -> Option<Vec<u8>> {
         self.sessions.lock().get(node_id).map(|s| s.snapshot())
     }
+
+    pub fn collect_snapshots(&self) -> Vec<(String, Vec<u8>)> {
+        self.sessions.lock().iter().map(|(k, v)| (k.clone(), v.snapshot())).collect()
+    }
 }
