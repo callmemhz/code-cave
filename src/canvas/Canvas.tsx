@@ -1,10 +1,13 @@
-import { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ReactFlow, Background, Controls, MiniMap,
+  useReactFlow,
   type Node, type Viewport,
 } from "@xyflow/react";
 import { useCanvasStore } from "../store/canvasStore";
 import { nodeTypes } from "./nodeTypes";
+import { ContextMenu } from "./ContextMenu";
+import type { NodeType } from "../types";
 
 export function Canvas() {
   const canvases = useCanvasStore((s) => s.canvases);
@@ -43,30 +46,65 @@ export function Canvas() {
     [updateSize],
   );
 
+  const [menu, setMenu] = useState<{ screenX: number; screenY: number; canvasX: number; canvasY: number } | null>(null);
+  const addNode = useCanvasStore((s) => s.addNode);
+  const rf = useReactFlow();
+
+  const handleCanvasContextMenu = (e: MouseEvent | React.MouseEvent) => {
+    e.preventDefault();
+    const pt = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+    setMenu({ screenX: e.clientX, screenY: e.clientY, canvasX: pt.x, canvasY: pt.y });
+  };
+
+  const pickType = async (type: NodeType) => {
+    if (!activeId || !menu) return;
+    const defaults = {
+      terminal: { w: 520, h: 320, data: { cwd: "~", shell: "/bin/zsh", env: {} } },
+      claude:   { w: 560, h: 360, data: { cwd: "~", args: [], resume_session_id: null } },
+      codex:    { w: 560, h: 360, data: { cwd: "~", args: [], resume_session_id: null } },
+      note:     { w: 320, h: 220, data: { content: "", preview_mode: false } },
+    }[type];
+    await addNode({
+      canvas_id: activeId, type,
+      x: menu.canvasX, y: menu.canvasY,
+      width: defaults.w, height: defaults.h,
+      title: null, data_json: JSON.stringify(defaults.data),
+    });
+  };
+
   if (!active) return <div style={{ padding: 24 }}>No canvas</div>;
 
   return (
-    <ReactFlow
-      key={active.id}
-      nodes={flowNodes}
-      edges={[]}
-      nodeTypes={nodeTypes}
-      defaultViewport={defaultViewport}
-      onMove={onMove}
-      onNodeDragStop={onNodeDragStop}
-      onNodesChange={(changes) => {
-        for (const c of changes) {
-          if (c.type === "dimensions" && c.dimensions) {
-            onNodeResize(c.id, c.dimensions.width, c.dimensions.height);
+    <>
+      <ReactFlow
+        key={active.id}
+        nodes={flowNodes}
+        edges={[]}
+        nodeTypes={nodeTypes}
+        defaultViewport={defaultViewport}
+        onMove={onMove}
+        onNodeDragStop={onNodeDragStop}
+        onNodesChange={(changes) => {
+          for (const c of changes) {
+            if (c.type === "dimensions" && c.dimensions) {
+              onNodeResize(c.id, c.dimensions.width, c.dimensions.height);
+            }
           }
-        }
-      }}
-      proOptions={{ hideAttribution: true }}
-      fitView={false}
-    >
-      <Background />
-      <MiniMap pannable zoomable />
-      <Controls />
-    </ReactFlow>
+        }}
+        onPaneContextMenu={handleCanvasContextMenu}
+        proOptions={{ hideAttribution: true }}
+        fitView={false}
+      >
+        <Background />
+        <MiniMap pannable zoomable />
+        <Controls />
+      </ReactFlow>
+      {menu && (
+        <ContextMenu
+          x={menu.screenX} y={menu.screenY}
+          onPick={pickType} onClose={() => setMenu(null)}
+        />
+      )}
+    </>
   );
 }
