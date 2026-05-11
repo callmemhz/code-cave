@@ -11,6 +11,8 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tracing_subscriber::fmt().with_env_filter("info").try_init().ok();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -22,6 +24,24 @@ pub fn run() {
                 db::canvases::create(&db, "default").expect("seed canvas");
             }
             app.manage(db);
+
+            let sup = pty::PtySupervisor::new();
+            app.manage(sup);
+
+            // Background scrollback flusher: every 1s, persist live snapshots.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let app = handle;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                    let Some(sup) = app.try_state::<pty::PtySupervisor>() else { continue };
+                    let Some(db) = app.try_state::<db::Db>() else { continue };
+                    for (nid, snap) in sup.collect_snapshots() {
+                        let _ = db::scrollback::write(&db, &nid, &snap);
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -37,6 +57,12 @@ pub fn run() {
             node_update_data,
             node_update_title,
             node_delete,
+            commands::pty::pty_spawn,
+            commands::pty::pty_write,
+            commands::pty::pty_resize,
+            commands::pty::pty_kill,
+            commands::pty::pty_snapshot,
+            commands::pty::pty_is_alive,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
