@@ -4,6 +4,7 @@ mod db;
 mod error;
 mod events;
 mod pty;
+mod tray;
 
 use commands::canvases::*;
 use commands::nodes::*;
@@ -16,6 +17,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| tray::on_window_event(window, event))
         .setup(|app| {
             let data_dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&data_dir).ok();
@@ -42,6 +44,8 @@ pub fn run() {
                     }
                 }
             });
+
+            tray::install(app.handle())?;
 
             Ok(())
         })
