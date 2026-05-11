@@ -110,6 +110,9 @@ export function Canvas() {
         onPaneContextMenu={handleCanvasContextMenu}
         proOptions={{ hideAttribution: true }}
         fitView={false}
+        // Tiny drag threshold so single click/double-click on the drag handle
+        // still fire (rename = double-click on title).
+        nodeDragThreshold={4}
       >
         <Background />
         <MiniMap pannable zoomable />
