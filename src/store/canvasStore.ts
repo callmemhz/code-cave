@@ -2,7 +2,10 @@ import { create } from "zustand";
 import type { Canvas, DbNode, NewNodeInput } from "../types";
 import * as Canvases from "../ipc/canvases";
 import * as Nodes from "../ipc/nodes";
+import { appStateGet, appStateSet } from "../ipc/appState";
 import { debounce } from "../lib/debounce";
+
+const ACTIVE_CANVAS_KEY = "active_canvas_id";
 
 interface CanvasState {
   canvases: Canvas[];
@@ -36,7 +39,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   loadAll: async () => {
     const canvases = await Canvases.canvasList();
-    const activeCanvasId = canvases[0]?.id ?? null;
+    const stored = await appStateGet(ACTIVE_CANVAS_KEY);
+    const activeCanvasId =
+      (stored && canvases.find((c) => c.id === stored)?.id) ??
+      canvases[0]?.id ??
+      null;
     const nodesByCanvas: Record<string, DbNode[]> = {};
     if (activeCanvasId) {
       nodesByCanvas[activeCanvasId] = await Nodes.nodeList(activeCanvasId);
@@ -50,12 +57,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       set((s) => ({ nodesByCanvas: { ...s.nodesByCanvas, [id]: ns } }));
     }
     set({ activeCanvasId: id });
+    appStateSet(ACTIVE_CANVAS_KEY, id).catch(console.error);
   },
 
   addCanvas: async (name) => {
     const c = await Canvases.canvasCreate(name);
     set((s) => ({ canvases: [...s.canvases, c], activeCanvasId: c.id,
                   nodesByCanvas: { ...s.nodesByCanvas, [c.id]: [] } }));
+    appStateSet(ACTIVE_CANVAS_KEY, c.id).catch(console.error);
   },
 
   renameCanvas: async (id, name) => {
@@ -65,12 +74,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   deleteCanvas: async (id) => {
     await Canvases.canvasDelete(id);
+    const wasActive = get().activeCanvasId === id;
     set((s) => {
       const canvases = s.canvases.filter((c) => c.id !== id);
       const { [id]: _, ...rest } = s.nodesByCanvas;
       const activeCanvasId = s.activeCanvasId === id ? (canvases[0]?.id ?? null) : s.activeCanvasId;
       return { canvases, nodesByCanvas: rest, activeCanvasId };
     });
+    if (wasActive) {
+      const next = get().activeCanvasId;
+      if (next) appStateSet(ACTIVE_CANVAS_KEY, next).catch(console.error);
+    }
   },
 
   saveViewport: (id, x, y, zoom) => {

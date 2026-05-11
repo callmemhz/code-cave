@@ -69,6 +69,8 @@ pub fn run() {
             commands::pty::pty_snapshot,
             commands::pty::pty_is_alive,
             commands::agents::agent_spawn,
+            commands::app_state::app_state_get,
+            commands::app_state::app_state_set,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
