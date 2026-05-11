@@ -8,3 +8,5 @@ export const canvasUpdateViewport = (id: string, x: number, y: number, zoom: num
 export const canvasRename = (id: string, name: string) =>
   invoke<void>("canvas_rename", { id, name });
 export const canvasDelete = (id: string) => invoke<void>("canvas_delete", { id });
+export const canvasReorder = (ids: string[]) =>
+  invoke<void>("canvas_reorder", { ids });
