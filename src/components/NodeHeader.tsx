@@ -14,15 +14,20 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
   const [draft, setDraft] = useState(title);
 
   return (
-    <div className="nodrag" style={{
-      display: "flex", alignItems: "center", gap: 6,
-      padding: "4px 8px", background: "#222", color: "#eee",
-      borderTopLeftRadius: 4, borderTopRightRadius: 4,
-      borderBottom: "1px solid #444", fontSize: 12,
-    }}>
+    <div
+      className="node-drag-handle"
+      style={{
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "4px 8px", background: "#222", color: "#eee",
+        borderTopLeftRadius: 4, borderTopRightRadius: 4,
+        borderBottom: "1px solid #444", fontSize: 12,
+        cursor: "move",
+      }}
+    >
       {badge}
       {editing ? (
         <input
+          className="nodrag"
           autoFocus value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => { onRename(draft); setEditing(false); }}
@@ -33,12 +38,24 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
           style={{ flex: 1, background: "#111", color: "#eee", border: "1px solid #555", padding: "1px 4px" }}
         />
       ) : (
-        <span onDoubleClick={() => { setDraft(title); setEditing(true); }}
-              style={{ flex: 1, userSelect: "none", cursor: "text" }}>{title}</span>
+        <span
+          className="nodrag"
+          onDoubleClick={() => { setDraft(title); setEditing(true); }}
+          style={{ flex: 1, userSelect: "none", cursor: "text" }}
+        >
+          {title}
+        </span>
       )}
-      {subtitle && <span style={{ opacity: 0.5 }}>{subtitle}</span>}
+      {subtitle && <span style={{ opacity: 0.5, pointerEvents: "none" }}>{subtitle}</span>}
       {children}
-      <button onClick={onDelete} title="Delete" style={{ background: "transparent", color: "#aaa", border: "none", cursor: "pointer" }}>✕</button>
+      <button
+        className="nodrag"
+        onClick={onDelete}
+        title="Delete"
+        style={{ background: "transparent", color: "#aaa", border: "none", cursor: "pointer" }}
+      >
+        ✕
+      </button>
     </div>
   );
 }

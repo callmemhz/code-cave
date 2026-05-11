@@ -37,8 +37,11 @@ export function NoteNode({ data }: NodeProps<NoteFlowNode>) {
         title={dbNode.title ?? "Note"}
         onRename={(t) => updateTitle(dbNode.id, t || null)}
         onDelete={() => deleteNode(dbNode.id)}>
-        <button onClick={() => { setPreview((p) => { persist({ preview_mode: !p }); return !p; }); }}
-                style={{ background: "transparent", color: "#aaa", border: "1px solid #444", borderRadius: 3, fontSize: 11, padding: "1px 6px", cursor: "pointer" }}>
+        <button
+          className="nodrag"
+          onClick={() => { setPreview((p) => { persist({ preview_mode: !p }); return !p; }); }}
+          style={{ background: "transparent", color: "#aaa", border: "1px solid #444", borderRadius: 3, fontSize: 11, padding: "1px 6px", cursor: "pointer" }}
+        >
           {preview ? "edit" : "preview"}
         </button>
       </NodeHeader>
