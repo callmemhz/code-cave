@@ -17,6 +17,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .on_window_event(|window, event| tray::on_window_event(window, event))
         .setup(|app| {
             let data_dir = app.path().app_data_dir().expect("app data dir");
