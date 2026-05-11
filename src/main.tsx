@@ -23,6 +23,15 @@ style.textContent = `
   .react-flow__node.selected {
     box-shadow: 0 0 0 2px rgba(120,160,255,0.55);
   }
+
+  /* Keep overlays (controls, minimap, panels, attribution) above nodes —
+     including a dragging node, which we bump to z-index 1000. */
+  .react-flow__controls,
+  .react-flow__minimap,
+  .react-flow__panel,
+  .react-flow__attribution {
+    z-index: 2000;
+  }
 `;
 document.head.appendChild(style);
 
