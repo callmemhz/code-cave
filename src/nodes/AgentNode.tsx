@@ -120,7 +120,11 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
       background: "#101418", border: "1px solid #2a3340", borderRadius: 4,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
-      <NodeResizer minWidth={320} minHeight={200} />
+      <NodeResizer
+        minWidth={320} minHeight={200}
+        lineStyle={{ borderColor: "transparent" }}
+        handleStyle={{ width: 8, height: 8, background: "#5a78a8", border: "none", borderRadius: 2 }}
+      />
       <NodeHeader
         title={dbNode.title ?? label}
         subtitle={`${parsed.cwd}${sessionId ? ` · ${sessionId.slice(0, 8)}` : ""}`}

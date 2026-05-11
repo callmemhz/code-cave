@@ -116,6 +116,7 @@ export function Canvas() {
         onPaneContextMenu={handleCanvasContextMenu}
         proOptions={{ hideAttribution: true }}
         fitView={false}
+        colorMode="dark"
         // Tiny drag threshold so single click/double-click on the drag handle
         // still fire (rename = double-click on title).
         nodeDragThreshold={4}
