@@ -56,6 +56,7 @@ pub fn run() {
             canvas_update_viewport,
             canvas_rename,
             canvas_delete,
+            commands::canvases::canvas_reorder,
             node_list,
             node_create,
             node_update_position,

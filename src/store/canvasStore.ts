@@ -17,6 +17,7 @@ interface CanvasState {
   addCanvas: (name: string) => Promise<void>;
   renameCanvas: (id: string, name: string) => Promise<void>;
   deleteCanvas: (id: string) => Promise<void>;
+  reorderCanvases: (ids: string[]) => Promise<void>;
   saveViewport: (id: string, x: number, y: number, zoom: number) => void;
 
   addNode: (input: NewNodeInput) => Promise<DbNode>;
@@ -70,6 +71,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   renameCanvas: async (id, name) => {
     await Canvases.canvasRename(id, name);
     set((s) => ({ canvases: s.canvases.map((c) => c.id === id ? { ...c, name } : c) }));
+  },
+
+  reorderCanvases: async (ids) => {
+    // Optimistic local reorder.
+    set((s) => {
+      const map = new Map(s.canvases.map((c) => [c.id, c]));
+      const next = ids
+        .map((id, i) => {
+          const c = map.get(id);
+          return c ? { ...c, position: i } : null;
+        })
+        .filter((c): c is Canvas => c !== null);
+      return { canvases: next };
+    });
+    await Canvases.canvasReorder(ids);
   },
 
   deleteCanvas: async (id) => {

@@ -32,3 +32,8 @@ pub fn canvas_rename(db: State<Db>, id: String, name: String) -> AppResult<()> {
 pub fn canvas_delete(db: State<Db>, id: String) -> AppResult<()> {
     db::canvases::delete(&db, &id)
 }
+
+#[tauri::command]
+pub fn canvas_reorder(db: State<Db>, ids: Vec<String>) -> AppResult<()> {
+    db::canvases::reorder(&db, &ids)
+}

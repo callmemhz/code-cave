@@ -86,6 +86,22 @@ pub fn delete(db: &Db, id: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Assign new positions to canvases based on `ids` (0-indexed). Ids not in
+/// `ids` are left untouched.
+pub fn reorder(db: &Db, ids: &[String]) -> AppResult<()> {
+    let conn = db.conn.lock().unwrap();
+    let ts = now();
+    let tx = conn.unchecked_transaction()?;
+    for (i, id) in ids.iter().enumerate() {
+        tx.execute(
+            "UPDATE canvases SET position=?, updated_at=? WHERE id=?",
+            rusqlite::params![i as i64, ts, id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

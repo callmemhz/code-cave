@@ -8,10 +8,15 @@ export function TabBar() {
   const addCanvas = useCanvasStore((s) => s.addCanvas);
   const renameCanvas = useCanvasStore((s) => s.renameCanvas);
   const deleteCanvas = useCanvasStore((s) => s.deleteCanvas);
+  const reorderCanvases = useCanvasStore((s) => s.reorderCanvases);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  // overId tells us which tab the cursor is over; "before"/"after"
+  // indicates which side of that tab the dragged item will land on.
+  const [over, setOver] = useState<{ id: string; side: "before" | "after" } | null>(null);
 
   // Cmd/Ctrl + 1..9 jumps to the N-th tab.
   useEffect(() => {
@@ -48,6 +53,22 @@ export function TabBar() {
     if (confirm(`Delete canvas "${name}"?`)) deleteCanvas(id);
   };
 
+  const handleDrop = (targetId: string) => {
+    if (!dragId || !over) return;
+    if (dragId === targetId) { setDragId(null); setOver(null); return; }
+    const ids = canvases.map((c) => c.id);
+    const fromIdx = ids.indexOf(dragId);
+    let toIdx = ids.indexOf(targetId);
+    if (over.side === "after") toIdx += 1;
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = ids.splice(fromIdx, 1);
+    if (fromIdx < toIdx) toIdx -= 1;
+    ids.splice(toIdx, 0, moved);
+    setDragId(null);
+    setOver(null);
+    void reorderCanvases(ids);
+  };
+
   return (
     <div style={{
       display: "flex", gap: 2, padding: 6, borderBottom: "1px solid #2a2a2a",
@@ -61,17 +82,54 @@ export function TabBar() {
         return (
           <div
             key={c.id}
+            draggable={!isEditing}
+            onDragStart={(e) => {
+              if (isEditing) return;
+              setDragId(c.id);
+              e.dataTransfer.effectAllowed = "move";
+              // Firefox needs *some* data to be set for drag to fire.
+              e.dataTransfer.setData("text/plain", c.id);
+            }}
+            onDragOver={(e) => {
+              if (!dragId || dragId === c.id) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              const rect = e.currentTarget.getBoundingClientRect();
+              const side = (e.clientX - rect.left) < rect.width / 2 ? "before" : "after";
+              if (over?.id !== c.id || over.side !== side) {
+                setOver({ id: c.id, side });
+              }
+            }}
+            onDragLeave={(e) => {
+              // Only clear if leaving for outside (not into a child).
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              if (over?.id === c.id) setOver(null);
+            }}
+            onDrop={(e) => { e.preventDefault(); handleDrop(c.id); }}
+            onDragEnd={() => { setDragId(null); setOver(null); }}
             onClick={() => { if (!isEditing) setActive(c.id); }}
             onDoubleClick={() => startRename(c.id, c.name)}
-            title={isEditing ? undefined : `Double-click to rename · Click × to close${shortcutHint}`}
+            title={isEditing ? undefined : `Drag to reorder · Double-click to rename · Click × to close${shortcutHint}`}
             style={{
+              position: "relative",
               display: "flex", alignItems: "center", gap: 4,
               padding: "3px 4px 3px 10px", borderRadius: 4,
-              cursor: isEditing ? "text" : "pointer",
+              cursor: isEditing ? "text" : (dragId === c.id ? "grabbing" : "pointer"),
               background: isActive ? "#333" : "transparent",
               color: isActive ? "#fff" : "#bbb",
+              opacity: dragId === c.id ? 0.5 : 1,
             }}
           >
+            {/* Drop-position indicator */}
+            {over?.id === c.id && dragId && dragId !== c.id && (
+              <div style={{
+                position: "absolute",
+                top: 2, bottom: 2,
+                [over.side === "before" ? "left" : "right"]: -2,
+                width: 2, background: "#5a8bd6", borderRadius: 1,
+                pointerEvents: "none",
+              }} />
+            )}
             {isEditing ? (
               <input
                 ref={editInputRef}
