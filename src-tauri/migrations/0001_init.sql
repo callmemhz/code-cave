@@ -1,4 +1,4 @@
-CREATE TABLE canvases (
+CREATE TABLE IF NOT EXISTS canvases (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   viewport_x REAL NOT NULL DEFAULT 0,
@@ -9,7 +9,7 @@ CREATE TABLE canvases (
   updated_at INTEGER NOT NULL
 );
 
-CREATE TABLE nodes (
+CREATE TABLE IF NOT EXISTS nodes (
   id TEXT PRIMARY KEY,
   canvas_id TEXT NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
@@ -22,20 +22,20 @@ CREATE TABLE nodes (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
-CREATE INDEX idx_nodes_canvas ON nodes(canvas_id);
+CREATE INDEX IF NOT EXISTS idx_nodes_canvas ON nodes(canvas_id);
 
-CREATE TABLE node_scrollback (
+CREATE TABLE IF NOT EXISTS node_scrollback (
   node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
   content BLOB NOT NULL,
   updated_at INTEGER NOT NULL
 );
 
-CREATE TABLE app_state (
+CREATE TABLE IF NOT EXISTS app_state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 
-CREATE TABLE schema_version (
+CREATE TABLE IF NOT EXISTS schema_version (
   version INTEGER PRIMARY KEY
 );
-INSERT INTO schema_version VALUES (1);
+INSERT OR IGNORE INTO schema_version VALUES (1);
