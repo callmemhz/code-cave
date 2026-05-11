@@ -35,7 +35,7 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
             if (e.key === "Enter") { onRename(draft); setEditing(false); }
             if (e.key === "Escape") { setDraft(title); setEditing(false); }
           }}
-          style={{ flex: "0 1 auto", maxWidth: 200, minWidth: 0, background: "#111", color: "#eee", border: "1px solid #555", padding: "1px 4px" }}
+          style={{ flex: "0 1 auto", maxWidth: 400, minWidth: 0, background: "#111", color: "#eee", border: "1px solid #555", padding: "1px 4px" }}
         />
       ) : (
         // Title takes its content width up to maxWidth, then ellipsis.
@@ -43,7 +43,7 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
         <span
           onDoubleClick={() => { setDraft(title); setEditing(true); }}
           style={{
-            flex: "0 1 auto", maxWidth: 200, minWidth: 0,
+            flex: "0 1 auto", maxWidth: 400, minWidth: 0,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             userSelect: "none", cursor: "inherit",
           }}
