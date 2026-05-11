@@ -25,8 +25,9 @@ export function Canvas() {
     type: n.type,
     position: { x: n.x, y: n.y },
     data: { dbNode: n },
-    width: n.width,
-    height: n.height,
+    // xyflow v12: NodeResizer reads/writes style.width|height for resizing.
+    // Top-level width/height are treated as "controlled" and conflict with the resizer.
+    style: { width: n.width, height: n.height },
   })), [rawNodes]);
 
   const defaultViewport: Viewport = active
@@ -58,10 +59,19 @@ export function Canvas() {
 
   const pickType = async (type: NodeType) => {
     if (!activeId || !menu) return;
+
+    // Prompt for cwd on CLI nodes.
+    let cwd = "~";
+    if (type === "terminal" || type === "claude" || type === "codex") {
+      const input = window.prompt(`Working directory for new ${type}:`, "~");
+      if (input === null) return; // user cancelled
+      cwd = input.trim() || "~";
+    }
+
     const defaults = {
-      terminal: { w: 520, h: 320, data: { cwd: "~", shell: "/bin/zsh", env: {} } },
-      claude:   { w: 560, h: 360, data: { cwd: "~", args: [], resume_session_id: null } },
-      codex:    { w: 560, h: 360, data: { cwd: "~", args: [], resume_session_id: null } },
+      terminal: { w: 520, h: 320, data: { cwd, shell: "/bin/zsh", env: {} } },
+      claude:   { w: 560, h: 360, data: { cwd, args: [], resume_session_id: null } },
+      codex:    { w: 560, h: 360, data: { cwd, args: [], resume_session_id: null } },
       note:     { w: 320, h: 220, data: { content: "", preview_mode: false } },
     }[type];
     await addNode({
