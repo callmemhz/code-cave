@@ -28,8 +28,8 @@ export function NoteNode({ data }: NodeProps<NoteFlowNode>) {
   return (
     <div style={{
       width: "100%", height: "100%",
-      background: "#1f1a10", color: "#ddd",
-      border: "1px solid #3a301c", borderRadius: 4,
+      background: "#1a1a1a", color: "#ddd",
+      border: "1px solid #333", borderRadius: 4,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       <NodeResizer
@@ -39,6 +39,7 @@ export function NoteNode({ data }: NodeProps<NoteFlowNode>) {
       />
       <NodeHeader
         title={dbNode.title ?? "Note"}
+        accent="rgba(240, 200, 90, 0.12)"
         onRename={(t) => updateTitle(dbNode.id, t || null)}
         onDelete={() => deleteNode(dbNode.id)}>
         <button

@@ -4,12 +4,17 @@ interface Props {
   title: string;
   subtitle?: string;
   badge?: React.ReactNode;
+  /**
+   * Header background tint (per-type identity color, applied as a translucent
+   * layer over the base #222 gray). Pass any rgba() string.
+   */
+  accent?: string;
   onRename: (title: string) => void;
   onDelete: () => void;
   children?: React.ReactNode; // extra toolbar buttons
 }
 
-export function NodeHeader({ title, subtitle, badge, onRename, onDelete, children }: Props) {
+export function NodeHeader({ title, subtitle, badge, accent, onRename, onDelete, children }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
 
@@ -18,7 +23,11 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
       className="node-drag-handle"
       style={{
         display: "flex", alignItems: "center", gap: 6,
-        padding: "4px 8px", background: "#222", color: "#eee",
+        padding: "4px 8px", color: "#eee",
+        // Translucent accent layered over base gray.
+        background: accent
+          ? `linear-gradient(${accent}, ${accent}), #222`
+          : "#222",
         borderTopLeftRadius: 4, borderTopRightRadius: 4,
         borderBottom: "1px solid #444", fontSize: 12,
         cursor: "grab",

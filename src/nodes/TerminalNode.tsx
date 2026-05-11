@@ -116,7 +116,7 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
   return (
     <div style={{
       width: "100%", height: "100%",
-      background: "#0f1418", border: "1px solid #2a3340", borderRadius: 4,
+      background: "#111", border: "1px solid #333", borderRadius: 4,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       <NodeResizer
@@ -127,6 +127,7 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       <NodeHeader
         title={dbNode.title ?? `terminal — ${parsed.shell}`}
         subtitle={parsed.cwd}
+        accent="rgba(120, 170, 220, 0.10)"
         badge={<span style={{
           width: 8, height: 8, borderRadius: 4,
           background: alive ? "#5fb55f" : "#888",

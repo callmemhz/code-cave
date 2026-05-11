@@ -113,14 +113,14 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
   }, [dbNode.id]);
 
   const label = kind === "claude" ? "Claude Code" : "Codex";
-  const tint = kind === "claude"
-    ? { background: "#1f150c", border: "#4a2818" }   // warm orange (Anthropic)
-    : { background: "#0c1a14", border: "#1f3a28" };  // cool green (OpenAI)
+  const accent = kind === "claude"
+    ? "rgba(217, 119, 87, 0.18)"   // Anthropic orange
+    : "rgba(80, 200, 140, 0.16)";  // OpenAI green
 
   return (
     <div style={{
       width: "100%", height: "100%",
-      background: tint.background, border: `1px solid ${tint.border}`, borderRadius: 4,
+      background: "#101418", border: "1px solid #2a3340", borderRadius: 4,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       <NodeResizer
@@ -131,6 +131,7 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
       <NodeHeader
         title={dbNode.title ?? label}
         subtitle={`${parsed.cwd}${sessionId ? ` · ${sessionId.slice(0, 8)}` : ""}`}
+        accent={accent}
         badge={<span style={{
           width: 8, height: 8, borderRadius: 4,
           background: alive ? "#5fb55f" : "#888",
