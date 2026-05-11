@@ -20,7 +20,7 @@ pub fn pty_spawn(
     rows: u16,
 ) -> AppResult<String> {
     let initial = db::scrollback::read(&db, &node_id)?;
-    let _ = sup.spawn(app, node_id.clone(), &cwd, &program, &args, &env, cols, rows, initial)?;
+    let _ = sup.spawn(app, node_id.clone(), &cwd, &program, &args, &env, cols, rows, initial, None, None)?;
     Ok(node_id)
 }
 

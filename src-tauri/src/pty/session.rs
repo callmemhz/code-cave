@@ -9,6 +9,9 @@ use std::io::{Read, Write};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
+pub type SniffCallback = Box<dyn Fn(&[u8]) -> Option<String> + Send + Sync>;
+pub type OnSniffCallback = Box<dyn Fn(String) + Send + Sync>;
+
 const SCROLLBACK_CAP: usize = 400 * 1024;
 
 pub struct PtySession {
@@ -29,6 +32,8 @@ impl PtySession {
         env: &HashMap<String, String>,
         cols: u16, rows: u16,
         initial_scrollback: Vec<u8>,
+        sniff: Option<SniffCallback>,
+        on_sniff: Option<OnSniffCallback>,
     ) -> AppResult<Arc<Self>> {
         let pty_system = native_pty_system();
         let pair = pty_system
@@ -70,11 +75,26 @@ impl PtySession {
         std::thread::spawn(move || {
             let engine = base64::engine::general_purpose::STANDARD;
             let mut buf = [0u8; 8192];
+            let mut sniff_done = false;
+            let mut bytes_seen: usize = 0;
+            let mut sniff_window: Vec<u8> = Vec::new();
+            const SNIFF_LIMIT: usize = 32 * 1024;
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
                         sb_for_reader.lock().push(&buf[..n]);
+                        if !sniff_done && bytes_seen < SNIFF_LIMIT {
+                            sniff_window.extend_from_slice(&buf[..n]);
+                            bytes_seen += n;
+                            if let Some(sniff_fn) = sniff.as_ref() {
+                                if let Some(id) = sniff_fn(&sniff_window) {
+                                    if let Some(cb) = on_sniff.as_ref() { cb(id); }
+                                    sniff_done = true;
+                                    sniff_window.clear();
+                                }
+                            }
+                        }
                         let payload = PtyDataEvent {
                             node_id: nid_for_reader.clone(),
                             bytes_b64: engine.encode(&buf[..n]),

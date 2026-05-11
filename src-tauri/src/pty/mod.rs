@@ -26,6 +26,8 @@ impl PtySupervisor {
         cwd: &str, program: &str, args: &[String],
         env: &HashMap<String,String>, cols: u16, rows: u16,
         initial_scrollback: Vec<u8>,
+        sniff: Option<session::SniffCallback>,
+        on_sniff: Option<session::OnSniffCallback>,
     ) -> AppResult<Arc<PtySession>> {
         let mut map = self.sessions.lock();
         if let Some(existing) = map.get(&node_id) {
@@ -33,7 +35,7 @@ impl PtySupervisor {
                 return Err(AppError::Invalid(format!("pty already running for {node_id}")));
             }
         }
-        let s = PtySession::spawn(app, node_id.clone(), cwd, program, args, env, cols, rows, initial_scrollback)?;
+        let s = PtySession::spawn(app, node_id.clone(), cwd, program, args, env, cols, rows, initial_scrollback, sniff, on_sniff)?;
         map.insert(node_id, s.clone());
         Ok(s)
     }
