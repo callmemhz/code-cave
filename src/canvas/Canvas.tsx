@@ -29,11 +29,10 @@ export function Canvas() {
     type: n.type,
     position: { x: n.x, y: n.y },
     data: { dbNode: n },
-    width: n.width,
-    height: n.height,
-    // Mirror in style so NodeResizer reads the actual current size on drag-start
-    // instead of falling back to its minWidth/minHeight.
+    // xyflow v12 NodeResizer reads/writes node.style.width|height.
+    // Setting top-level width/height as well causes the resizer to start from 0.
     style: { width: n.width, height: n.height },
+    dragHandle: ".node-drag-handle",
   })), [rawNodes]);
 
   const defaultViewport: Viewport = active
