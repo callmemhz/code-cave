@@ -29,9 +29,8 @@ export function Canvas() {
     type: n.type,
     position: { x: n.x, y: n.y },
     data: { dbNode: n },
-    // xyflow v12 NodeResizer reads/writes node.style.width|height.
-    // Setting top-level width/height as well causes the resizer to start from 0.
-    style: { width: n.width, height: n.height },
+    width: n.width,
+    height: n.height,
     dragHandle: ".node-drag-handle",
   })), [rawNodes]);
 
