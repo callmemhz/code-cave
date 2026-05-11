@@ -52,7 +52,7 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
           {title}
         </span>
       )}
-      {subtitle && (
+      {subtitle ? (
         <span
           title={subtitle}
           style={{
@@ -64,6 +64,10 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
         >
           {subtitle}
         </span>
+      ) : (
+        // Spacer so trailing toolbar/× button sit at the right edge even
+        // when there's no subtitle (e.g. note nodes).
+        <div style={{ flex: 1 }} />
       )}
       {children}
       <button

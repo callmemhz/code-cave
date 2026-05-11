@@ -113,11 +113,14 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
   }, [dbNode.id]);
 
   const label = kind === "claude" ? "Claude Code" : "Codex";
+  const tint = kind === "claude"
+    ? { background: "#1f150c", border: "#4a2818" }   // warm orange (Anthropic)
+    : { background: "#0c1a14", border: "#1f3a28" };  // cool green (OpenAI)
 
   return (
     <div style={{
       width: "100%", height: "100%",
-      background: "#101418", border: "1px solid #2a3340", borderRadius: 4,
+      background: tint.background, border: `1px solid ${tint.border}`, borderRadius: 4,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       <NodeResizer
