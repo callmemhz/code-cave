@@ -31,6 +31,12 @@ export function Canvas() {
     data: { dbNode: n },
     width: n.width,
     height: n.height,
+    // `measured` is what NodeResizer reads to compute its drag-start
+    // dimensions. xyflow's adoptUserNodes resets internal `measured` on
+    // every flowNodes recreation (which we do on every store tick), so
+    // without passing it explicitly the resizer reads undefined → 0 and
+    // every drag starts from min. See xyflow adoptUserNodes source.
+    measured: { width: n.width, height: n.height },
     dragHandle: ".node-drag-handle",
   })), [rawNodes]);
 
