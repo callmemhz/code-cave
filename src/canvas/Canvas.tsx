@@ -7,7 +7,11 @@ import {
 import { useCanvasStore } from "../store/canvasStore";
 import { nodeTypes } from "./nodeTypes";
 import { ContextMenu } from "./ContextMenu";
+import { CwdPrompt } from "./CwdPrompt";
 import type { NodeType } from "../types";
+
+type CwdKind = "terminal" | "claude" | "codex";
+type PendingCreate = { type: CwdKind; canvasX: number; canvasY: number };
 
 export function Canvas() {
   const canvases = useCanvasStore((s) => s.canvases);
@@ -25,8 +29,10 @@ export function Canvas() {
     type: n.type,
     position: { x: n.x, y: n.y },
     data: { dbNode: n },
-    // xyflow v12: NodeResizer reads/writes style.width|height for resizing.
-    // Top-level width/height are treated as "controlled" and conflict with the resizer.
+    width: n.width,
+    height: n.height,
+    // Mirror in style so NodeResizer reads the actual current size on drag-start
+    // instead of falling back to its minWidth/minHeight.
     style: { width: n.width, height: n.height },
   })), [rawNodes]);
 
@@ -48,6 +54,7 @@ export function Canvas() {
   );
 
   const [menu, setMenu] = useState<{ screenX: number; screenY: number; canvasX: number; canvasY: number } | null>(null);
+  const [pendingCreate, setPendingCreate] = useState<PendingCreate | null>(null);
   const addNode = useCanvasStore((s) => s.addNode);
   const rf = useReactFlow();
 
@@ -57,17 +64,8 @@ export function Canvas() {
     setMenu({ screenX: e.clientX, screenY: e.clientY, canvasX: pt.x, canvasY: pt.y });
   };
 
-  const pickType = async (type: NodeType) => {
-    if (!activeId || !menu) return;
-
-    // Prompt for cwd on CLI nodes.
-    let cwd = "~";
-    if (type === "terminal" || type === "claude" || type === "codex") {
-      const input = window.prompt(`Working directory for new ${type}:`, "~");
-      if (input === null) return; // user cancelled
-      cwd = input.trim() || "~";
-    }
-
+  const createNode = async (type: NodeType, x: number, y: number, cwd: string) => {
+    if (!activeId) return;
     const defaults = {
       terminal: { w: 520, h: 320, data: { cwd, shell: "/bin/zsh", env: {} } },
       claude:   { w: 560, h: 360, data: { cwd, args: [], resume_session_id: null } },
@@ -76,10 +74,20 @@ export function Canvas() {
     }[type];
     await addNode({
       canvas_id: activeId, type,
-      x: menu.canvasX, y: menu.canvasY,
+      x, y,
       width: defaults.w, height: defaults.h,
       title: null, data_json: JSON.stringify(defaults.data),
     });
+  };
+
+  const pickType = (type: NodeType) => {
+    if (!activeId || !menu) return;
+    if (type === "terminal" || type === "claude" || type === "codex") {
+      setPendingCreate({ type, canvasX: menu.canvasX, canvasY: menu.canvasY });
+    } else {
+      // note: no cwd needed
+      void createNode(type, menu.canvasX, menu.canvasY, "~");
+    }
   };
 
   if (!active) return <div style={{ padding: 24 }}>No canvas</div>;
@@ -113,6 +121,18 @@ export function Canvas() {
         <ContextMenu
           x={menu.screenX} y={menu.screenY}
           onPick={pickType} onClose={() => setMenu(null)}
+        />
+      )}
+      {pendingCreate && (
+        <CwdPrompt
+          type={pendingCreate.type}
+          defaultCwd="~"
+          onCancel={() => setPendingCreate(null)}
+          onSubmit={(cwd) => {
+            const { type, canvasX, canvasY } = pendingCreate;
+            setPendingCreate(null);
+            void createNode(type, canvasX, canvasY, cwd);
+          }}
         />
       )}
     </>
