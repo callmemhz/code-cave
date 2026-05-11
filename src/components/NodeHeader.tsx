@@ -35,7 +35,7 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
             if (e.key === "Enter") { onRename(draft); setEditing(false); }
             if (e.key === "Escape") { setDraft(title); setEditing(false); }
           }}
-          style={{ flex: 1, background: "#111", color: "#eee", border: "1px solid #555", padding: "1px 4px" }}
+          style={{ flex: "1 1 0", minWidth: 0, background: "#111", color: "#eee", border: "1px solid #555", padding: "1px 4px" }}
         />
       ) : (
         // Title is part of the drag handle (no nodrag class). xyflow's
@@ -43,13 +43,29 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
         // dbl-click happens with ~0 mouse movement.
         <span
           onDoubleClick={() => { setDraft(title); setEditing(true); }}
-          style={{ flex: 1, userSelect: "none", cursor: "inherit" }}
+          style={{
+            flex: "1 1 0", minWidth: 0,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            userSelect: "none", cursor: "inherit",
+          }}
           title="Drag to move · Double-click to rename"
         >
           {title}
         </span>
       )}
-      {subtitle && <span style={{ opacity: 0.5, pointerEvents: "none" }}>{subtitle}</span>}
+      {subtitle && (
+        <span
+          title={subtitle}
+          style={{
+            flex: "0 1 auto", minWidth: 0, maxWidth: "60%",
+            opacity: 0.5,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          {subtitle}
+        </span>
+      )}
       {children}
       <button
         className="nodrag"

@@ -42,10 +42,6 @@ export function Canvas() {
     if (activeId) saveViewport(activeId, vp.x, vp.y, vp.zoom);
   }, [activeId, saveViewport]);
 
-  const onNodeDragStop = useCallback((_: unknown, n: Node) => {
-    updatePos(n.id, n.position.x, n.position.y);
-  }, [updatePos]);
-
   const onNodeResize = useCallback(
     (id: string, w: number, h: number) => updateSize(id, w, h),
     [updateSize],
@@ -99,11 +95,15 @@ export function Canvas() {
         nodeTypes={nodeTypes}
         defaultViewport={defaultViewport}
         onMove={onMove}
-        onNodeDragStop={onNodeDragStop}
         onNodesChange={(changes) => {
           for (const c of changes) {
             if (c.type === "dimensions" && c.dimensions) {
               onNodeResize(c.id, c.dimensions.width, c.dimensions.height);
+            } else if (c.type === "position" && c.position) {
+              // Live position during drag AND final drop both come through
+              // here; updating immediately makes the drag track the cursor
+              // in real time (instead of snapping on release).
+              updatePos(c.id, c.position.x, c.position.y);
             }
           }
         }}
