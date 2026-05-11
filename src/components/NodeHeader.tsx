@@ -35,16 +35,15 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
             if (e.key === "Enter") { onRename(draft); setEditing(false); }
             if (e.key === "Escape") { setDraft(title); setEditing(false); }
           }}
-          style={{ flex: "1 1 0", minWidth: 0, background: "#111", color: "#eee", border: "1px solid #555", padding: "1px 4px" }}
+          style={{ flex: "0 1 auto", maxWidth: 200, minWidth: 0, background: "#111", color: "#eee", border: "1px solid #555", padding: "1px 4px" }}
         />
       ) : (
-        // Title is part of the drag handle (no nodrag class). xyflow's
-        // nodeDragThreshold lets the double-click-to-rename still fire because
-        // dbl-click happens with ~0 mouse movement.
+        // Title takes its content width up to maxWidth, then ellipsis.
+        // Subtitle (flex: 1) gets all remaining space.
         <span
           onDoubleClick={() => { setDraft(title); setEditing(true); }}
           style={{
-            flex: "1 1 0", minWidth: 0,
+            flex: "0 1 auto", maxWidth: 200, minWidth: 0,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             userSelect: "none", cursor: "inherit",
           }}
@@ -57,7 +56,7 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
         <span
           title={subtitle}
           style={{
-            flex: "0 1 auto", minWidth: 0, maxWidth: "60%",
+            flex: "1 1 auto", minWidth: 0,
             opacity: 0.5,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             pointerEvents: "none",

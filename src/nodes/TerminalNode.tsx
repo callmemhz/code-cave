@@ -119,7 +119,11 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       background: "#111", border: "1px solid #333", borderRadius: 4,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
-      <NodeResizer minWidth={300} minHeight={180} />
+      <NodeResizer
+        minWidth={300} minHeight={180}
+        lineStyle={{ borderColor: "transparent" }}
+        handleStyle={{ width: 8, height: 8, background: "#5a78a8", border: "none", borderRadius: 2 }}
+      />
       <NodeHeader
         title={dbNode.title ?? `terminal — ${parsed.shell}`}
         subtitle={parsed.cwd}
