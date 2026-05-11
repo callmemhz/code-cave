@@ -1,6 +1,7 @@
 mod commands;
 mod db;
 mod error;
+mod events;
 mod pty;
 
 use commands::canvases::*;
