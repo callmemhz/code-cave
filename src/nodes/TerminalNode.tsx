@@ -116,7 +116,7 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
   return (
     <div style={{
       width: "100%", height: "100%",
-      background: "#111", border: "1px solid #333", borderRadius: 4,
+      background: "#0f1418", border: "1px solid #2a3340", borderRadius: 4,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       <NodeResizer
