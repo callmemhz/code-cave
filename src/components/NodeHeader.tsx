@@ -21,7 +21,7 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
         padding: "4px 8px", background: "#222", color: "#eee",
         borderTopLeftRadius: 4, borderTopRightRadius: 4,
         borderBottom: "1px solid #444", fontSize: 12,
-        cursor: "move",
+        cursor: "grab",
       }}
     >
       {badge}
@@ -38,10 +38,13 @@ export function NodeHeader({ title, subtitle, badge, onRename, onDelete, childre
           style={{ flex: 1, background: "#111", color: "#eee", border: "1px solid #555", padding: "1px 4px" }}
         />
       ) : (
+        // Title is part of the drag handle (no nodrag class). xyflow's
+        // nodeDragThreshold lets the double-click-to-rename still fire because
+        // dbl-click happens with ~0 mouse movement.
         <span
-          className="nodrag"
           onDoubleClick={() => { setDraft(title); setEditing(true); }}
-          style={{ flex: 1, userSelect: "none", cursor: "text" }}
+          style={{ flex: 1, userSelect: "none", cursor: "inherit" }}
+          title="Drag to move · Double-click to rename"
         >
           {title}
         </span>
