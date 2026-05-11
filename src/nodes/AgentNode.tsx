@@ -54,21 +54,28 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
       ptyWrite(dbNode.id, b64encode(encoder.encode(s))).catch(console.error);
     });
 
-    let unlistenData: (() => void) | null = null;
-    let unlistenExit: (() => void) | null = null;
-    let unlistenSession: (() => void) | null = null;
     let cancelled = false;
+    const unlistens: Array<() => void> = [];
 
     const startOrReattach = async () => {
-      unlistenData = await onPtyData(dbNode.id, (e) => termRef.current?.write(b64decode(e.bytes_b64)));
-      unlistenExit = await onPtyExit(dbNode.id, () => setAlive(false));
-      unlistenSession = await onAgentSession(dbNode.id, (id) => {
+      const u1 = await onPtyData(dbNode.id, (e) => termRef.current?.write(b64decode(e.bytes_b64)));
+      if (cancelled) { u1(); return; }
+      unlistens.push(u1);
+
+      const u2 = await onPtyExit(dbNode.id, () => setAlive(false));
+      if (cancelled) { u2(); return; }
+      unlistens.push(u2);
+
+      const u3 = await onAgentSession(dbNode.id, (id) => {
         setSessionId(id);
         const merged: AgentData = { ...parsed, resume_session_id: id };
         updateData(dbNode.id, JSON.stringify(merged));
       });
+      if (cancelled) { u3(); return; }
+      unlistens.push(u3);
 
       const snapB64 = await ptySnapshot(dbNode.id);
+      if (cancelled) return;
       if (snapB64) term.write(b64decode(snapB64));
 
       const isAlive = await ptyIsAlive(dbNode.id);
@@ -79,6 +86,7 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
           extraArgs: parsed.args, resumeId: parsed.resume_session_id,
           env: {}, cols: term.cols, rows: term.rows,
         });
+        if (cancelled) return;
       }
       setAlive(true);
     };
@@ -87,9 +95,7 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
     return () => {
       cancelled = true;
       onDataHandler.dispose();
-      unlistenData?.();
-      unlistenExit?.();
-      unlistenSession?.();
+      for (const u of unlistens) u();
       term.dispose();
       termRef.current = null;
     };

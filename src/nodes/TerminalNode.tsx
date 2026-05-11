@@ -56,20 +56,25 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       ptyWrite(dbNode.id, b64encode(encoder.encode(s))).catch(console.error);
     });
 
-    let unlistenData: (() => void) | null = null;
-    let unlistenExit: (() => void) | null = null;
     let cancelled = false;
+    const unlistens: Array<() => void> = [];
 
     const startOrReattach = async () => {
       // Subscribe BEFORE spawning to not miss bytes.
-      unlistenData = await onPtyData(dbNode.id, (e) => {
+      const u1 = await onPtyData(dbNode.id, (e) => {
         if (!termRef.current) return;
         termRef.current.write(b64decode(e.bytes_b64));
       });
-      unlistenExit = await onPtyExit(dbNode.id, () => setAlive(false));
+      if (cancelled) { u1(); return; }
+      unlistens.push(u1);
+
+      const u2 = await onPtyExit(dbNode.id, () => setAlive(false));
+      if (cancelled) { u2(); return; }
+      unlistens.push(u2);
 
       // Repaint saved scrollback (process may or may not still be alive).
       const snapB64 = await ptySnapshot(dbNode.id);
+      if (cancelled) return;
       if (snapB64) term.write(b64decode(snapB64));
 
       const isAlive = await ptyIsAlive(dbNode.id);
@@ -81,6 +86,7 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
           program: parsed.shell, args: [],
           env: parsed.env, cols, rows,
         });
+        if (cancelled) return;
       }
       setAlive(true);
     };
@@ -89,8 +95,7 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
     return () => {
       cancelled = true;
       onDataHandler.dispose();
-      unlistenData?.();
-      unlistenExit?.();
+      for (const u of unlistens) u();
       term.dispose();
       termRef.current = null;
     };

@@ -12,9 +12,8 @@ pub fn build_claude(resume_id: Option<&str>, extra: &[String]) -> AgentLaunch {
     let mut args: Vec<String> = Vec::new();
     if let Some(id) = resume_id {
         args.push("--resume".into()); args.push(id.into());
-    } else {
-        args.push("--continue".into()); // best-effort if no id yet
     }
+    // No resume id → plain `claude`, start a fresh session.
     args.extend(extra.iter().cloned());
     AgentLaunch { program: "claude".into(), args }
 }
