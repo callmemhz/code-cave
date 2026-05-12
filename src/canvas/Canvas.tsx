@@ -8,10 +8,14 @@ import { useCanvasStore } from "../store/canvasStore";
 import { nodeTypes } from "./nodeTypes";
 import { ContextMenu } from "./ContextMenu";
 import { CwdPrompt } from "./CwdPrompt";
+import { appStateGet, appStateSet } from "../ipc/appState";
 import type { NodeType } from "../types";
 
 type CwdKind = "terminal" | "claude" | "codex";
 type PendingCreate = { type: CwdKind; canvasX: number; canvasY: number };
+
+const RECENT_CWDS_KEY = "recent_cwds";
+const RECENT_CWDS_MAX = 8;
 
 export function Canvas() {
   const canvases = useCanvasStore((s) => s.canvases);
@@ -55,8 +59,32 @@ export function Canvas() {
 
   const [menu, setMenu] = useState<{ screenX: number; screenY: number; canvasX: number; canvasY: number } | null>(null);
   const [pendingCreate, setPendingCreate] = useState<PendingCreate | null>(null);
+  const [recentCwds, setRecentCwds] = useState<string[]>([]);
   const addNode = useCanvasStore((s) => s.addNode);
   const rf = useReactFlow();
+
+  // Load recent cwds once on mount.
+  useEffect(() => {
+    appStateGet(RECENT_CWDS_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setRecentCwds(parsed.filter((p): p is string => typeof p === "string"));
+          }
+        } catch { /* ignore */ }
+      })
+      .catch(() => {});
+  }, []);
+
+  const pushRecentCwd = (cwd: string) => {
+    setRecentCwds((prev) => {
+      const next = [cwd, ...prev.filter((p) => p !== cwd)].slice(0, RECENT_CWDS_MAX);
+      appStateSet(RECENT_CWDS_KEY, JSON.stringify(next)).catch(console.error);
+      return next;
+    });
+  };
 
   // Cmd/Ctrl + 0 → snap canvas zoom back to 1:1 (selection in xterm needs
   // 1:1 because xterm's mouse math is transform-blind). Keeps current pan.
@@ -93,6 +121,9 @@ export function Canvas() {
       width: defaults.w, height: defaults.h,
       title: null, data_json: JSON.stringify(defaults.data),
     });
+    if (type === "terminal" || type === "claude" || type === "codex") {
+      pushRecentCwd(cwd);
+    }
   };
 
   const pickType = (type: NodeType) => {
@@ -149,7 +180,8 @@ export function Canvas() {
       {pendingCreate && (
         <CwdPrompt
           type={pendingCreate.type}
-          defaultCwd="~"
+          defaultCwd={recentCwds[0] ?? "~"}
+          recents={recentCwds}
           onCancel={() => setPendingCreate(null)}
           onSubmit={(cwd) => {
             const { type, canvasX, canvasY } = pendingCreate;
