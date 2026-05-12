@@ -75,23 +75,27 @@ impl PtySession {
         std::thread::spawn(move || {
             let engine = base64::engine::general_purpose::STANDARD;
             let mut buf = [0u8; 8192];
-            let mut sniff_done = false;
-            let mut bytes_seen: usize = 0;
+            // Sliding window kept for the whole session — claude users can
+            // run /resume mid-session to switch to a different conversation,
+            // which prints a new session id we need to catch.
             let mut sniff_window: Vec<u8> = Vec::new();
-            const SNIFF_LIMIT: usize = 32 * 1024;
+            const SNIFF_WINDOW: usize = 8 * 1024;
+            let mut last_sniffed_id: Option<String> = None;
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
                         sb_for_reader.lock().push(&buf[..n]);
-                        if !sniff_done && bytes_seen < SNIFF_LIMIT {
+                        if let Some(sniff_fn) = sniff.as_ref() {
                             sniff_window.extend_from_slice(&buf[..n]);
-                            bytes_seen += n;
-                            if let Some(sniff_fn) = sniff.as_ref() {
-                                if let Some(id) = sniff_fn(&sniff_window) {
+                            if sniff_window.len() > SNIFF_WINDOW {
+                                let drop = sniff_window.len() - SNIFF_WINDOW;
+                                sniff_window.drain(..drop);
+                            }
+                            if let Some(id) = sniff_fn(&sniff_window) {
+                                if last_sniffed_id.as_deref() != Some(id.as_str()) {
+                                    last_sniffed_id = Some(id.clone());
                                     if let Some(cb) = on_sniff.as_ref() { cb(id); }
-                                    sniff_done = true;
-                                    sniff_window.clear();
                                 }
                             }
                         }
