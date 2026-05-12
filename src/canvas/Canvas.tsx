@@ -169,7 +169,7 @@ export function Canvas() {
       >
         <Background />
         <MiniMap pannable zoomable />
-        <Controls />
+        <Controls showInteractive={false} />
       </ReactFlow>
       {menu && (
         <ContextMenu
