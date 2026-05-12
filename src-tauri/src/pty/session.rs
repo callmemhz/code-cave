@@ -20,6 +20,7 @@ pub struct PtySession {
     writer: Mutex<Box<dyn Write + Send>>,
     pub scrollback: Arc<Mutex<RingBuf>>,
     alive: Arc<std::sync::atomic::AtomicBool>,
+    child_pid: Option<u32>,
 }
 
 impl PtySession {
@@ -47,6 +48,7 @@ impl PtySession {
 
         let mut child = pair.slave.spawn_command(cmd)
             .map_err(|e| AppError::Pty(format!("spawn: {e}")))?;
+        let child_pid = child.process_id();
         drop(pair.slave);
 
         let writer = pair.master.take_writer()
@@ -65,6 +67,7 @@ impl PtySession {
             writer: Mutex::new(writer),
             scrollback: scrollback.clone(),
             alive: alive.clone(),
+            child_pid,
         });
 
         // Reader thread (blocking IO).
@@ -146,6 +149,8 @@ impl PtySession {
     }
 
     pub fn node_id(&self) -> &str { &self.node_id }
+
+    pub fn child_pid(&self) -> Option<u32> { self.child_pid }
 }
 
 fn shellexpand_or_passthrough(p: &str) -> String {

@@ -70,7 +70,7 @@ pub fn agent_spawn(
 
 /// Update node.data_json's `resume_session_id` and notify the renderer.
 /// No-op if the stored value already matches `new_id`.
-fn update_resume_session_id(app: &AppHandle, node_id: &str, new_id: &str) {
+pub(crate) fn update_resume_session_id(app: &AppHandle, node_id: &str, new_id: &str) {
     let Some(db) = app.try_state::<Db>() else { return };
     let current: Result<String, _> = {
         let conn = db.conn.lock().unwrap();
@@ -97,7 +97,7 @@ fn update_resume_session_id(app: &AppHandle, node_id: &str, new_id: &str) {
     let _ = app.emit(&format!("agent:session:{node_id}"), new_id.to_string());
 }
 
-fn encode_claude_project_dir(cwd: &str) -> PathBuf {
+pub(crate) fn encode_claude_project_dir(cwd: &str) -> PathBuf {
     let expanded = if let Some(rest) = cwd.strip_prefix("~") {
         match dirs::home_dir() {
             Some(home) => format!("{}{}", home.display(), rest),
@@ -130,7 +130,17 @@ fn is_uuid_like(s: &str) -> bool {
     })
 }
 
-fn find_latest_session_id(dir: &Path) -> Option<String> {
+pub(crate) fn find_latest_session_id(dir: &Path) -> Option<String> {
+    find_latest_session_id_after(dir, None)
+}
+
+/// If `since` is `Some`, only consider files whose mtime is strictly newer
+/// than that instant. Used to ignore .jsonl files that existed before a
+/// terminal pane was launched.
+pub(crate) fn find_latest_session_id_after(
+    dir: &Path,
+    since: Option<std::time::SystemTime>,
+) -> Option<String> {
     let entries = std::fs::read_dir(dir).ok()?;
     let mut best: Option<(std::time::SystemTime, String)> = None;
     for entry in entries.flatten() {
@@ -145,6 +155,11 @@ fn find_latest_session_id(dir: &Path) -> Option<String> {
         }
         let Ok(meta) = entry.metadata() else { continue };
         let Ok(mtime) = meta.modified() else { continue };
+        if let Some(since) = since {
+            if mtime <= since {
+                continue;
+            }
+        }
         if best.as_ref().map_or(true, |(t, _)| mtime > *t) {
             best = Some((mtime, stem.to_string()));
         }

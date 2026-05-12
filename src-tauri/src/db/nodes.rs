@@ -55,6 +55,26 @@ pub fn list_by_canvas(db: &Db, canvas_id: &str) -> AppResult<Vec<Node>> {
     Ok(rows)
 }
 
+pub fn find(db: &Db, id: &str) -> AppResult<Option<Node>> {
+    let conn = db.conn.lock().unwrap();
+    let res = conn.query_row(
+        "SELECT id, canvas_id, type, x, y, width, height, title, data_json, created_at, updated_at
+         FROM nodes WHERE id=?",
+        [id],
+        |r| Ok(Node {
+            id: r.get(0)?, canvas_id: r.get(1)?, r#type: r.get(2)?,
+            x: r.get(3)?, y: r.get(4)?, width: r.get(5)?, height: r.get(6)?,
+            title: r.get(7)?, data_json: r.get(8)?,
+            created_at: r.get(9)?, updated_at: r.get(10)?,
+        }),
+    );
+    match res {
+        Ok(n) => Ok(Some(n)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 pub fn create(db: &Db, n: NewNode) -> AppResult<Node> {
     let id = uuid::Uuid::new_v4().to_string();
     let ts = now();

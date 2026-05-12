@@ -1,9 +1,14 @@
+use crate::commands::agents::{
+    encode_claude_project_dir, find_latest_session_id, find_latest_session_id_after,
+    update_resume_session_id,
+};
 use crate::db::{self, Db};
 use crate::error::{AppError, AppResult};
 use crate::pty::PtySupervisor;
 use base64::Engine;
 use std::collections::HashMap;
-use tauri::{AppHandle, State};
+use std::time::{Duration, SystemTime};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -20,8 +25,254 @@ pub fn pty_spawn(
     rows: u16,
 ) -> AppResult<String> {
     let initial = db::scrollback::read(&db, &node_id)?;
-    let _ = sup.spawn(app, node_id.clone(), &cwd, &program, &args, &env, cols, rows, initial, None, None)?;
+    let _ = sup.spawn(
+        app.clone(),
+        node_id.clone(),
+        &cwd,
+        &program,
+        &args,
+        &env,
+        cols,
+        rows,
+        initial,
+        None,
+        None,
+    )?;
+    // Watch this terminal: if the user runs `claude` in it, promote the
+    // node to a claude pane automatically.
+    start_terminal_to_claude_watcher(app, node_id.clone(), cwd);
     Ok(node_id)
+}
+
+/// Watches the canonical claude project dir for this terminal's cwd. If a
+/// new `<uuid>.jsonl` file appears AFTER the terminal was spawned, we
+/// assume the user invoked claude and convert the node's type in place.
+/// After promotion, also checks whether `claude` is still actually running
+/// under this PTY; if not (e.g. user hit Ctrl-C), demote back to terminal.
+fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String) {
+    std::thread::spawn(move || {
+        let project_dir = encode_claude_project_dir(&cwd);
+        let mut started_at = SystemTime::now() - Duration::from_secs(2); // grace
+        let mut promoted = false;
+        let mut last_seen: Option<String> = None;
+        let mut dead_ticks: u32 = 0;
+
+        loop {
+            std::thread::sleep(Duration::from_millis(1500));
+            let Some(sup) = app.try_state::<PtySupervisor>() else { break };
+            let session = sup.get(&node_id);
+            let alive = session.as_ref().map(|s| s.is_alive()).unwrap_or(false);
+            if !alive {
+                break;
+            }
+            let pty_pid = session.as_ref().and_then(|s| s.child_pid());
+            let claude_alive = pty_pid.map(is_claude_running_under).unwrap_or(false);
+
+            if !promoted {
+                // Promote on EITHER signal: a claude descendant process, or a
+                // fresh session file. The process check fires almost
+                // immediately (before claude writes any .jsonl), so the badge
+                // turns orange as soon as `claude` starts — not after the
+                // first user message.
+                let session_id = find_latest_session_id_after(&project_dir, Some(started_at));
+                if claude_alive || session_id.is_some() {
+                    let id_ref = session_id.as_deref();
+                    if promote_terminal_to_claude(&app, &node_id, &cwd, id_ref) {
+                        promoted = true;
+                        last_seen = session_id;
+                        dead_ticks = 0;
+                    }
+                }
+            } else {
+                // Update session id if the user did /resume (or it just
+                // appeared post-promotion).
+                if let Some(id) = find_latest_session_id(&project_dir) {
+                    if last_seen.as_deref() != Some(id.as_str()) {
+                        last_seen = Some(id.clone());
+                        update_resume_session_id(&app, &node_id, &id);
+                    }
+                }
+                // Demote when `claude` exits (Ctrl-C). Require 2 consecutive
+                // misses (~3s) to avoid teardown/startup races.
+                if !claude_alive {
+                    dead_ticks += 1;
+                    if dead_ticks >= 2 {
+                        if demote_claude_to_terminal(&app, &node_id) {
+                            promoted = false;
+                            dead_ticks = 0;
+                            started_at = SystemTime::now() - Duration::from_secs(2);
+                        }
+                    }
+                } else {
+                    dead_ticks = 0;
+                }
+            }
+        }
+    });
+}
+
+/// DB-promote a terminal node to type='claude' and broadcast the new node
+/// so the renderer can swap component types. Embeds the original terminal
+/// config in data_json._original_terminal so we can demote later.
+/// Returns true on success.
+fn promote_terminal_to_claude(
+    app: &AppHandle,
+    node_id: &str,
+    cwd: &str,
+    session_id: Option<&str>,
+) -> bool {
+    let Some(db) = app.try_state::<Db>() else { return false };
+
+    let node = match db::nodes::find(&db, node_id) {
+        Ok(Some(n)) => n,
+        _ => return false,
+    };
+    if node.r#type != "terminal" {
+        return false;
+    }
+
+    // Stash the original terminal config so demote can restore it.
+    let old: serde_json::Value =
+        serde_json::from_str(&node.data_json).unwrap_or(serde_json::json!({}));
+    let shell = old.get("shell").and_then(|v| v.as_str()).unwrap_or("/bin/zsh");
+    let env = old.get("env").cloned().unwrap_or(serde_json::json!({}));
+
+    let resume_value = match session_id {
+        Some(s) => serde_json::Value::String(s.to_string()),
+        None => serde_json::Value::Null,
+    };
+    let new_data = serde_json::json!({
+        "cwd": cwd,
+        "args": [],
+        "resume_session_id": resume_value,
+        "_original_terminal": { "shell": shell, "env": env },
+    });
+    let new_data_str = match serde_json::to_string(&new_data) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    {
+        let conn = db.conn.lock().unwrap();
+        let ts = now_millis();
+        let r = conn.execute(
+            "UPDATE nodes SET type='claude', data_json=?, updated_at=? WHERE id=?",
+            rusqlite::params![new_data_str, ts, node_id],
+        );
+        if r.is_err() {
+            return false;
+        }
+    }
+
+    if let Ok(Some(updated)) = db::nodes::find(&db, node_id) {
+        let _ = app.emit("node:converted", updated);
+    }
+    true
+}
+
+/// Reverse of promote_terminal_to_claude. Only fires for panes that were
+/// auto-promoted (identified by the `_original_terminal` marker).
+fn demote_claude_to_terminal(app: &AppHandle, node_id: &str) -> bool {
+    let Some(db) = app.try_state::<Db>() else { return false };
+
+    let node = match db::nodes::find(&db, node_id) {
+        Ok(Some(n)) => n,
+        _ => return false,
+    };
+    if node.r#type != "claude" {
+        return false;
+    }
+
+    let data: serde_json::Value =
+        serde_json::from_str(&node.data_json).unwrap_or(serde_json::json!({}));
+    // Only auto-promoted panes carry the marker. Native claude panes are
+    // immune to demotion.
+    let Some(original) = data.get("_original_terminal") else { return false };
+    let cwd = data.get("cwd").and_then(|v| v.as_str()).unwrap_or("~").to_string();
+    let shell = original
+        .get("shell")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/bin/zsh")
+        .to_string();
+    let env = original.get("env").cloned().unwrap_or(serde_json::json!({}));
+
+    let new_data = serde_json::json!({ "cwd": cwd, "shell": shell, "env": env });
+    let new_data_str = match serde_json::to_string(&new_data) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    {
+        let conn = db.conn.lock().unwrap();
+        let ts = now_millis();
+        let r = conn.execute(
+            "UPDATE nodes SET type='terminal', data_json=?, updated_at=? WHERE id=?",
+            rusqlite::params![new_data_str, ts, node_id],
+        );
+        if r.is_err() {
+            return false;
+        }
+    }
+
+    if let Ok(Some(updated)) = db::nodes::find(&db, node_id) {
+        let _ = app.emit("node:converted", updated);
+    }
+    true
+}
+
+fn now_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
+
+/// Walks the process tree via `ps`. Returns true if a `claude` process
+/// is anywhere in the descendant chain of `root_pid`.
+fn is_claude_running_under(root_pid: u32) -> bool {
+    let Ok(output) = std::process::Command::new("ps")
+        .args(["-axo", "pid=,ppid=,command="])
+        .output() else { return true };
+    let s = String::from_utf8_lossy(&output.stdout);
+
+    let mut ppid_of: std::collections::HashMap<u32, u32> =
+        std::collections::HashMap::new();
+    let mut claude_pids: Vec<u32> = Vec::new();
+
+    for line in s.lines() {
+        let trimmed = line.trim_start();
+        // splitn(3, ws) gives [pid, ppid, "rest of line including spaces"]
+        let mut parts = trimmed.splitn(3, char::is_whitespace);
+        let Some(pid_s) = parts.next() else { continue };
+        let Some(ppid_s) = parts.next() else { continue };
+        let cmd = parts.next().unwrap_or("").trim_start();
+        let Ok(pid) = pid_s.parse::<u32>() else { continue };
+        let Ok(ppid) = ppid_s.parse::<u32>() else { continue };
+        ppid_of.insert(pid, ppid);
+        if is_claude_cmd(cmd) {
+            claude_pids.push(pid);
+        }
+    }
+
+    for claude_pid in claude_pids {
+        let mut cur = claude_pid;
+        for _ in 0..64 {
+            if cur == root_pid { return true }
+            let Some(&parent) = ppid_of.get(&cur) else { break };
+            if parent <= 1 { break }
+            cur = parent;
+        }
+    }
+    false
+}
+
+fn is_claude_cmd(cmd: &str) -> bool {
+    let first = cmd.split_whitespace().next().unwrap_or("");
+    let base = std::path::Path::new(first)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(first);
+    base == "claude"
 }
 
 #[tauri::command]
