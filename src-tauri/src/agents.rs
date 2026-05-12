@@ -10,10 +10,13 @@ pub struct AgentLaunch {
 /// `resume_id` is the previously-captured session id, if any.
 pub fn build_claude(resume_id: Option<&str>, extra: &[String]) -> AgentLaunch {
     let mut args: Vec<String> = Vec::new();
+    // Default to skipping tool-permission prompts so the agent doesn't
+    // freeze waiting for user input inside our pane. Extra args from the
+    // node config can override / append.
+    args.push("--dangerously-skip-permissions".into());
     if let Some(id) = resume_id {
         args.push("--resume".into()); args.push(id.into());
     }
-    // No resume id → plain `claude`, start a fresh session.
     args.extend(extra.iter().cloned());
     AgentLaunch { program: "claude".into(), args }
 }
