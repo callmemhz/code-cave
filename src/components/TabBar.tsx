@@ -17,12 +17,22 @@ export function TabBar() {
   // overId tells us which tab the cursor is over; "before"/"after"
   // indicates which side of that tab the dragged item will land on.
   const [over, setOver] = useState<{ id: string; side: "before" | "after" } | null>(null);
+  // Inline confirm-modal target. Tauri's WKWebView doesn't surface JS
+  // confirm() dialogs, so we render our own.
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
 
-  // Cmd/Ctrl + 1..9 jumps to the N-th tab.
+  // Cmd/Ctrl + 1..9 jumps to the N-th tab; Cmd/Ctrl + W closes the active.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.shiftKey || e.altKey) return;
+      if (e.key === "w" || e.key === "W") {
+        if (!active || canvases.length <= 1) return;
+        e.preventDefault();
+        const c = canvases.find((x) => x.id === active);
+        if (c) setPendingDelete({ id: c.id, name: c.name });
+        return;
+      }
       const n = parseInt(e.key, 10);
       if (Number.isNaN(n) || n < 1 || n > 9) return;
       const target = canvases[n - 1];
@@ -33,7 +43,7 @@ export function TabBar() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [canvases, setActive]);
+  }, [canvases, active, setActive]);
 
   const startRename = (id: string, current: string) => {
     setEditingId(id);
@@ -50,7 +60,7 @@ export function TabBar() {
 
   const handleClose = (id: string, name: string) => {
     if (canvases.length <= 1) return;
-    if (confirm(`Delete canvas "${name}"?`)) deleteCanvas(id);
+    setPendingDelete({ id, name });
   };
 
   const handleDrop = (targetId: string) => {
@@ -70,6 +80,7 @@ export function TabBar() {
   };
 
   return (
+    <>
     <div style={{
       display: "flex", gap: 2, padding: 6, borderBottom: "1px solid #2a2a2a",
       background: "#1a1a1a", color: "#ddd", fontSize: 13,
@@ -184,5 +195,52 @@ export function TabBar() {
         +
       </button>
     </div>
+    {pendingDelete && (
+      <div
+        onClick={() => setPendingDelete(null)}
+        style={{
+          position: "fixed", inset: 0, zIndex: 2000,
+          background: "rgba(0,0,0,0.45)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: "#1a1a1a", color: "#e0e0e0",
+            border: "1px solid #444", borderRadius: 6,
+            padding: 16, minWidth: 320,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.6)",
+            fontSize: 13,
+          }}
+        >
+          <div style={{ marginBottom: 14 }}>
+            Delete canvas <b>{pendingDelete.name}</b>? All nodes on it will be removed.
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setPendingDelete(null)}
+              style={confirmBtn}
+              autoFocus
+            >Cancel</button>
+            <button
+              onClick={() => {
+                const id = pendingDelete.id;
+                setPendingDelete(null);
+                deleteCanvas(id);
+              }}
+              style={{ ...confirmBtn, background: "#7a2a2a", borderColor: "#8a3a3a" }}
+            >Delete</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
+
+const confirmBtn: React.CSSProperties = {
+  background: "#2a2a2a", color: "#ddd",
+  border: "1px solid #444", borderRadius: 4,
+  padding: "4px 12px", fontSize: 13, cursor: "pointer",
+};
