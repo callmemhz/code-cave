@@ -4,6 +4,7 @@ import type { Node, NodeProps } from "@xyflow/react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { patchXtermMouseServiceWithRetry } from "../lib/patchXtermMouseService";
 import type { DbNode, TerminalData } from "../types";
 import { NodeHeader } from "../components/NodeHeader";
 import { useCanvasStore } from "../store/canvasStore";
@@ -52,6 +53,10 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
     fitRef.current = fit;
     fit.fit();
     term.focus();
+    // Make xterm's mouse-to-cell math zoom-aware (xyflow uses CSS transform
+    // scale on the viewport, which breaks xterm's pre-transform cellWidth
+    // assumption). See ../lib/patchXtermMouseService.
+    const cancelPatch = patchXtermMouseServiceWithRetry(term);
 
     const encoder = new TextEncoder();
     const onDataHandler = term.onData((s) => {
@@ -96,6 +101,7 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
 
     return () => {
       cancelled = true;
+      cancelPatch();
       onDataHandler.dispose();
       for (const u of unlistens) u();
       term.dispose();

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow, Background, Controls, MiniMap,
   useReactFlow,
@@ -57,6 +57,21 @@ export function Canvas() {
   const [pendingCreate, setPendingCreate] = useState<PendingCreate | null>(null);
   const addNode = useCanvasStore((s) => s.addNode);
   const rf = useReactFlow();
+
+  // Cmd/Ctrl + 0 → snap canvas zoom back to 1:1 (selection in xterm needs
+  // 1:1 because xterm's mouse math is transform-blind). Keeps current pan.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key !== "0") return;
+      e.preventDefault();
+      const vp = rf.getViewport();
+      rf.setViewport({ ...vp, zoom: 1 });
+      if (activeId) saveViewport(activeId, vp.x, vp.y, 1);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [rf, activeId, saveViewport]);
 
   const handleCanvasContextMenu = (e: MouseEvent | React.MouseEvent) => {
     e.preventDefault();
