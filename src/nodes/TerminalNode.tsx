@@ -65,7 +65,14 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
     const cancelPatch = patchXtermMouseServiceWithRetry(term);
 
     const encoder = new TextEncoder();
+    // Gate xterm-generated input while we're replaying the saved scrollback.
+    // The scrollback contains ESC sequences (e.g. \x1b[c device-attributes
+    // queries) that xterm answers by writing back through onData; if we
+    // forwarded those to the freshly-spawned shell, it would type the
+    // responses ("1;2c1;" etc.) at the prompt on every restart.
+    let replaying = true;
     const onDataHandler = term.onData((s) => {
+      if (replaying) return;
       ptyWrite(dbNode.id, b64encode(encoder.encode(s))).catch(console.error);
     });
 
@@ -88,7 +95,12 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       // Repaint saved scrollback (process may or may not still be alive).
       const snapB64 = await ptySnapshot(dbNode.id);
       if (cancelled) return;
-      if (snapB64) term.write(b64decode(snapB64));
+      if (snapB64) {
+        await new Promise<void>((resolve) => {
+          term.write(b64decode(snapB64), () => resolve());
+        });
+      }
+      replaying = false;
 
       const isAlive = await ptyIsAlive(dbNode.id);
       if (cancelled) return;
