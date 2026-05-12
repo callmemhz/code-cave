@@ -52,7 +52,13 @@ export function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
     termRef.current = term;
     fitRef.current = fit;
     fit.fit();
-    term.focus();
+    // Only auto-focus this pane if nobody else has keyboard attention. This
+    // keeps brand-new panes immediately typeable but stops re-mounts (e.g.
+    // promote/demote, dev-mode StrictMode double-mount) from stealing focus
+    // away from whatever pane the user is currently typing in.
+    if (document.activeElement === document.body || document.activeElement === null) {
+      term.focus();
+    }
     // Make xterm's mouse-to-cell math zoom-aware (xyflow uses CSS transform
     // scale on the viewport, which breaks xterm's pre-transform cellWidth
     // assumption). See ../lib/patchXtermMouseService.
