@@ -3,6 +3,7 @@ import { NodeResizer, type Node, type NodeProps } from "@xyflow/react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { patchXtermMouseServiceWithRetry } from "../lib/patchXtermMouseService";
 import type { DbNode, AgentData } from "../types";
 import { NodeHeader } from "../components/NodeHeader";
 import { useCanvasStore } from "../store/canvasStore";
@@ -27,6 +28,7 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
   const updateData = useCanvasStore((s) => s.updateNodeData);
   const deleteNode = useCanvasStore((s) => s.deleteNode);
 
+
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -49,6 +51,7 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
     fitRef.current = fit;
     fit.fit();
     term.focus();
+    const cancelPatch = patchXtermMouseServiceWithRetry(term);
 
     const encoder = new TextEncoder();
     const onDataHandler = term.onData((s) => {
@@ -95,6 +98,7 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
 
     return () => {
       cancelled = true;
+      cancelPatch();
       onDataHandler.dispose();
       for (const u of unlistens) u();
       term.dispose();
