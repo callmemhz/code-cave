@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { NodeResizer, type Node, type NodeProps } from "@xyflow/react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import type { DbNode, AgentData } from "../types";
 import { NodeHeader } from "../components/NodeHeader";
@@ -43,11 +42,13 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    try { term.loadAddon(new WebglAddon()); } catch { /* optional */ }
+    // Canvas renderer (xterm default). See TerminalNode for rationale —
+    // WebGL breaks IME composition and selection alignment.
     term.open(hostRef.current);
     termRef.current = term;
     fitRef.current = fit;
     fit.fit();
+    term.focus();
 
     const encoder = new TextEncoder();
     const onDataHandler = term.onData((s) => {
