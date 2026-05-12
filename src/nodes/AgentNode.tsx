@@ -50,7 +50,11 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
     termRef.current = term;
     fitRef.current = fit;
     fit.fit();
-    term.focus();
+    // Don't yank focus from a pane the user is already typing in. See
+    // TerminalNode for the full rationale.
+    if (document.activeElement === document.body || document.activeElement === null) {
+      term.focus();
+    }
     const cancelPatch = patchXtermMouseServiceWithRetry(term);
 
     const encoder = new TextEncoder();
