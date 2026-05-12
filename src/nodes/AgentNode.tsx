@@ -58,7 +58,12 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
     const cancelPatch = patchXtermMouseServiceWithRetry(term);
 
     const encoder = new TextEncoder();
+    // See TerminalNode for rationale: gate xterm-generated input while we
+    // replay saved scrollback, otherwise device-attribute responses
+    // (\x1b[?1;2c etc.) get typed back into the freshly-spawned process.
+    let replaying = true;
     const onDataHandler = term.onData((s) => {
+      if (replaying) return;
       ptyWrite(dbNode.id, b64encode(encoder.encode(s))).catch(console.error);
     });
 
@@ -84,7 +89,12 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
 
       const snapB64 = await ptySnapshot(dbNode.id);
       if (cancelled) return;
-      if (snapB64) term.write(b64decode(snapB64));
+      if (snapB64) {
+        await new Promise<void>((resolve) => {
+          term.write(b64decode(snapB64), () => resolve());
+        });
+      }
+      replaying = false;
 
       const isAlive = await ptyIsAlive(dbNode.id);
       if (cancelled) return;

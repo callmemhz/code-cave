@@ -11,9 +11,35 @@ use commands::nodes::*;
 use db::Db;
 use tauri::Manager;
 
+/// When launched from Finder/Applications the inherited PATH is the bare
+/// `/usr/bin:/bin:/usr/sbin:/sbin`, so user-installed tools (brew, cargo,
+/// bun, node, claude, codex, starship, …) are unreachable from PTY shells
+/// and from agent spawns. Capture the user's login+interactive shell PATH
+/// once at startup and apply it to our own process so every child inherits.
+fn fixup_user_path() {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let Ok(output) = std::process::Command::new(&shell)
+        .args(["-l", "-i", "-c", "echo $PATH"])
+        .output()
+    else { return };
+    if !output.status.success() { return }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Login/interactive shells may print greetings/MOTD before our echo.
+    // Pick the last non-empty line that looks like a PATH.
+    let path = stdout
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && l.contains('/'));
+    if let Some(p) = path {
+        std::env::set_var("PATH", p);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt().with_env_filter("info").try_init().ok();
+    fixup_user_path();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

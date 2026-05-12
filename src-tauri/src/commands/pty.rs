@@ -68,6 +68,13 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
             let pty_pid = session.as_ref().and_then(|s| s.child_pid());
             let claude_alive = pty_pid.map(is_claude_running_under).unwrap_or(false);
 
+            // Track shell cwd so `cd` survives app restart.
+            if let Some(pid) = pty_pid {
+                if let Some(cwd_now) = get_process_cwd(pid) {
+                    update_node_cwd_if_changed(&app, &node_id, &cwd_now);
+                }
+            }
+
             if !promoted {
                 // Promote on EITHER signal: a claude descendant process, or a
                 // fresh session file. The process check fires almost
@@ -264,6 +271,41 @@ fn is_claude_running_under(root_pid: u32) -> bool {
         }
     }
     false
+}
+
+/// Returns the current working directory of `pid` via macOS `lsof`.
+fn get_process_cwd(pid: u32) -> Option<String> {
+    let output = std::process::Command::new("lsof")
+        .args(["-p", &pid.to_string(), "-a", "-d", "cwd", "-F", "n"])
+        .output()
+        .ok()?;
+    let s = String::from_utf8_lossy(&output.stdout);
+    for line in s.lines() {
+        if let Some(rest) = line.strip_prefix('n') {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
+/// Update node.data_json's `cwd` if it differs, and broadcast the new node
+/// so the subtitle/header reflects the change live. No-op if unchanged.
+fn update_node_cwd_if_changed(app: &AppHandle, node_id: &str, new_cwd: &str) {
+    let Some(db) = app.try_state::<Db>() else { return };
+    let Ok(Some(node)) = db::nodes::find(&db, node_id) else { return };
+    let mut data: serde_json::Value =
+        serde_json::from_str(&node.data_json).unwrap_or(serde_json::json!({}));
+    if data.get("cwd").and_then(|v| v.as_str()) == Some(new_cwd) {
+        return;
+    }
+    if let Some(map) = data.as_object_mut() {
+        map.insert("cwd".into(), serde_json::Value::String(new_cwd.to_string()));
+    }
+    let new_json = serde_json::to_string(&data).unwrap_or(node.data_json.clone());
+    let _ = db::nodes::update_data(&db, node_id, &new_json);
+    if let Ok(Some(updated)) = db::nodes::find(&db, node_id) {
+        let _ = app.emit("node:converted", updated);
+    }
 }
 
 fn is_claude_cmd(cmd: &str) -> bool {
