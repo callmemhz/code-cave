@@ -21,6 +21,7 @@ interface CanvasState {
   saveViewport: (id: string, x: number, y: number, zoom: number) => void;
 
   addNode: (input: NewNodeInput) => Promise<DbNode>;
+  replaceNode: (node: DbNode) => void;
   updateNodePosition: (id: string, x: number, y: number) => void;
   updateNodeSize: (id: string, w: number, h: number) => void;
   updateNodeData: (id: string, dataJson: string) => void;
@@ -121,6 +122,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       },
     }));
     return n;
+  },
+
+  replaceNode: (node) => {
+    set((s) => {
+      const next = { ...s.nodesByCanvas };
+      for (const cid of Object.keys(next)) {
+        next[cid] = next[cid].map((n) => (n.id === node.id ? node : n));
+      }
+      return { nodesByCanvas: next };
+    });
   },
 
   updateNodePosition: (id, x, y) => {
