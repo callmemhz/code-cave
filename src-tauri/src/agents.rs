@@ -48,7 +48,12 @@ fn strip_ansi(s: &str) -> String {
 pub fn sniff_session_id(buf: &[u8]) -> Option<String> {
     let s = String::from_utf8_lossy(buf);
     let plain = strip_ansi(&s);
-    UUID_NEAR_SESSION.captures(&plain).and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+    // Pick the LAST match in the window so /resume-driven session-id swaps
+    // are picked up even while the previous id is still in the buffer.
+    UUID_NEAR_SESSION
+        .captures_iter(&plain)
+        .last()
+        .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
 }
 
 #[cfg(test)]
