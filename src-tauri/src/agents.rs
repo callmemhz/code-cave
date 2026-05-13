@@ -11,13 +11,24 @@ pub struct AgentLaunch {
 pub fn build_claude(resume_id: Option<&str>, extra: &[String]) -> AgentLaunch {
     let mut args: Vec<String> = Vec::new();
     // Default to skipping tool-permission prompts so the agent doesn't
-    // freeze waiting for user input inside our pane. Extra args from the
-    // node config can override / append.
-    args.push("--dangerously-skip-permissions".into());
-    if let Some(id) = resume_id {
-        args.push("--resume".into()); args.push(id.into());
+    // freeze waiting for user input inside our pane.
+    if !extra.iter().any(|a| a == "--dangerously-skip-permissions") {
+        args.push("--dangerously-skip-permissions".into());
     }
-    args.extend(extra.iter().cloned());
+    // Carry forward whatever flags the user originally launched claude
+    // with — most importantly `-w <worktree>` so worktree-mode sessions
+    // resume in the right place. The captured args may themselves contain
+    // a stale `--resume <old>`; strip it so our latest id wins.
+    let mut skip = false;
+    for a in extra {
+        if skip { skip = false; continue }
+        if a == "--resume" || a == "-r" { skip = true; continue }
+        args.push(a.clone());
+    }
+    if let Some(id) = resume_id {
+        args.push("--resume".into());
+        args.push(id.into());
+    }
     AgentLaunch { program: "claude".into(), args }
 }
 

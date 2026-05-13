@@ -57,6 +57,31 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
     }
     const cancelPatch = patchXtermMouseServiceWithRetry(term);
 
+    // xterm sends plain \r for both Enter and Shift+Enter — there's no
+    // way at the OS/TTY level to distinguish them. Terminal emulators
+    // that support multi-line editing (iTerm Natural Text Editing,
+    // Warp, …) emit a separate byte for Shift+Enter; Claude Code
+    // listens for those. We send LF (0x0a) which is what iTerm's
+    // Natural Text Editing preset uses for Shift+Return.
+    term.attachCustomKeyEventHandler((ev) => {
+      if (ev.type === "keydown" && ev.key === "Enter") {
+        console.log("[code-cave] Enter keydown", {
+          shiftKey: ev.shiftKey, metaKey: ev.metaKey, ctrlKey: ev.ctrlKey, altKey: ev.altKey,
+        });
+      }
+      if (ev.type === "keydown" && ev.key === "Enter" && ev.shiftKey
+          && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+        // Same bytes as Option+Enter (ESC + CR), which the user just
+        // confirmed Claude treats as a newline. preventDefault stops
+        // xterm's hidden textarea from inserting its own newline.
+        ev.preventDefault();
+        ptyWrite(dbNode.id, b64encode(new Uint8Array([0x1b, 0x0d])))
+          .catch(console.error);
+        return false;
+      }
+      return true;
+    });
+
     const encoder = new TextEncoder();
     // See TerminalNode for rationale: gate xterm-generated input while we
     // replay saved scrollback, otherwise device-attribute responses
