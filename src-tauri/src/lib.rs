@@ -99,12 +99,27 @@ pub fn run() {
             // never gets the chance to show the confirm modal.
             #[cfg(target_os = "macos")]
             {
-                use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
+                use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
                 let quit_item = MenuItem::with_id(app, "cc_quit", "Quit Code Cave", true, Some("Cmd+Q"))?;
                 let app_menu = SubmenuBuilder::new(app, "Code Cave")
                     .item(&quit_item)
                     .build()?;
-                let menu = MenuBuilder::new(app).item(&app_menu).build()?;
+                // Setting a custom menu replaces the macOS default menu — we
+                // have to re-add Edit explicitly or Cmd+C/V/X/A stop working
+                // (xterm relies on the system clipboard shortcuts).
+                let edit_menu = SubmenuBuilder::new(app, "Edit")
+                    .item(&PredefinedMenuItem::undo(app, None)?)
+                    .item(&PredefinedMenuItem::redo(app, None)?)
+                    .separator()
+                    .item(&PredefinedMenuItem::cut(app, None)?)
+                    .item(&PredefinedMenuItem::copy(app, None)?)
+                    .item(&PredefinedMenuItem::paste(app, None)?)
+                    .item(&PredefinedMenuItem::select_all(app, None)?)
+                    .build()?;
+                let menu = MenuBuilder::new(app)
+                    .item(&app_menu)
+                    .item(&edit_menu)
+                    .build()?;
                 app.set_menu(menu)?;
             }
 
