@@ -7,7 +7,6 @@ use crate::error::{AppError, AppResult};
 use crate::pty::PtySupervisor;
 use base64::Engine;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -27,17 +26,6 @@ pub fn pty_spawn(
 ) -> AppResult<String> {
     let initial = db::scrollback::read(&db, &node_id)?;
 
-    // Per-pane shell init: gives this pane its own HISTFILE and forces
-    // INC_APPEND_HISTORY so commands persist immediately (no need for
-    // the shell to exit cleanly). For zsh we use ZDOTDIR; for other
-    // shells we just skip and fall back to the user's defaults.
-    let mut env = env;
-    if is_zsh_program(&program) {
-        if let Some(zdir) = prepare_pane_zdotdir(&app, &node_id) {
-            env.insert("ZDOTDIR".to_string(), zdir.display().to_string());
-        }
-    }
-
     let _ = sup.spawn(
         app.clone(),
         node_id.clone(),
@@ -55,57 +43,6 @@ pub fn pty_spawn(
     // node to a claude pane automatically.
     start_terminal_to_claude_watcher(app, node_id.clone(), cwd);
     Ok(node_id)
-}
-
-fn is_zsh_program(program: &str) -> bool {
-    Path::new(program)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(|n| n == "zsh" || n.ends_with("zsh"))
-        .unwrap_or(false)
-}
-
-/// Create (idempotently) a private ZDOTDIR for this pane containing a
-/// `.zshrc` that:
-///   - sources the user's real ~/.zshrc (so themes / aliases / prompts
-///     still apply),
-///   - overrides HISTFILE to a per-pane file under the app data dir,
-///   - enables INC_APPEND_HISTORY + SHARE_HISTORY so commands persist
-///     immediately rather than only on clean shell exit.
-///
-/// The `.zshenv` is also templated through so user-level env vars apply.
-/// We don't bother with `.zprofile` / `.zlogin` — login mode isn't used.
-fn prepare_pane_zdotdir(app: &AppHandle, node_id: &str) -> Option<PathBuf> {
-    let data = app.path().app_data_dir().ok()?;
-    let zdir = data.join("zsh-init").join(node_id);
-    std::fs::create_dir_all(&zdir).ok()?;
-    let histdir = data.join("zsh-history");
-    std::fs::create_dir_all(&histdir).ok()?;
-    let histfile = histdir.join(node_id);
-
-    // .zshenv first so user-level env (PATH augmentations etc.) still load.
-    let zshenv = "if [ -f \"$HOME/.zshenv\" ]; then\n  emulate sh -c 'source \"$HOME/.zshenv\"'\nfi\n";
-    let _ = std::fs::write(zdir.join(".zshenv"), zshenv);
-
-    // .zshrc: source user's first so our overrides win.
-    let zshrc = format!(
-        "# code-cave per-pane init — auto-generated, do not edit by hand.\n\
-if [ -f \"$HOME/.zshrc\" ]; then\n  source \"$HOME/.zshrc\"\nfi\n\
-HISTFILE={histfile}\n\
-HISTSIZE=10000\n\
-SAVEHIST=10000\n\
-setopt INC_APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_ALL_DUPS HIST_FIND_NO_DUPS\n",
-        histfile = shell_single_quote(&histfile.display().to_string()),
-    );
-    let _ = std::fs::write(zdir.join(".zshrc"), zshrc);
-
-    Some(zdir)
-}
-
-/// Wrap a value in zsh-safe single quotes (escape embedded quotes).
-fn shell_single_quote(s: &str) -> String {
-    let escaped = s.replace('\'', "'\\''");
-    format!("'{}'", escaped)
 }
 
 /// Watches the canonical claude project dir for this terminal's cwd. If a
