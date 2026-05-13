@@ -67,7 +67,8 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
                 break;
             }
             let pty_pid = session.as_ref().and_then(|s| s.child_pid());
-            let claude_alive = pty_pid.map(is_claude_running_under).unwrap_or(false);
+            let claude_args = pty_pid.and_then(find_claude_args_under);
+            let claude_alive = claude_args.is_some();
 
             // Track shell cwd so `cd` survives app restart.
             if let Some(pid) = pty_pid {
@@ -85,7 +86,8 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
                 let session_id = find_latest_session_id_after(&project_dir, Some(started_at));
                 if claude_alive || session_id.is_some() {
                     let id_ref = session_id.as_deref();
-                    if promote_terminal_to_claude(&app, &node_id, &cwd, id_ref) {
+                    let args_ref = claude_args.as_deref().unwrap_or(&[]);
+                    if promote_terminal_to_claude(&app, &node_id, &cwd, id_ref, args_ref) {
                         promoted = true;
                         last_seen = session_id;
                         dead_ticks = 0;
@@ -121,13 +123,16 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
 
 /// DB-promote a terminal node to type='claude' and broadcast the new node
 /// so the renderer can swap component types. Embeds the original terminal
-/// config in data_json._original_terminal so we can demote later.
+/// config in data_json._original_terminal so we can demote later. The
+/// `captured_args` are the running claude's argv (sans program name) so
+/// we can reproduce flags like `-w <worktree>` on respawn.
 /// Returns true on success.
 fn promote_terminal_to_claude(
     app: &AppHandle,
     node_id: &str,
     cwd: &str,
     session_id: Option<&str>,
+    captured_args: &[String],
 ) -> bool {
     let Some(db) = app.try_state::<Db>() else { return false };
 
@@ -151,7 +156,7 @@ fn promote_terminal_to_claude(
     };
     let new_data = serde_json::json!({
         "cwd": cwd,
-        "args": [],
+        "args": captured_args,
         "resume_session_id": resume_value,
         "_original_terminal": { "shell": shell, "env": env },
     });
@@ -235,21 +240,30 @@ fn now_millis() -> i64 {
         .as_millis() as i64
 }
 
-/// Walks the process tree via `ps`. Returns true if a `claude` process
-/// is anywhere in the descendant chain of `root_pid`.
+/// Walks the process tree via `ps`. Returns true if a `claude` process is
+/// anywhere in the descendant chain of `root_pid`. Cheap convenience over
+/// [`find_claude_args_under`].
 fn is_claude_running_under(root_pid: u32) -> bool {
-    let Ok(output) = std::process::Command::new("ps")
+    find_claude_args_under(root_pid).is_some()
+}
+
+/// Same as `is_claude_running_under`, but returns the captured argv of the
+/// first matching claude process (with the program name stripped). Used at
+/// promotion time so we can reproduce the original launch flags (e.g.
+/// `-w <worktree>`) when respawning after app restart.
+fn find_claude_args_under(root_pid: u32) -> Option<Vec<String>> {
+    let output = std::process::Command::new("ps")
         .args(["-axo", "pid=,ppid=,command="])
-        .output() else { return true };
+        .output()
+        .ok()?;
     let s = String::from_utf8_lossy(&output.stdout);
 
     let mut ppid_of: std::collections::HashMap<u32, u32> =
         std::collections::HashMap::new();
-    let mut claude_pids: Vec<u32> = Vec::new();
+    let mut claude_entries: Vec<(u32, String)> = Vec::new();
 
     for line in s.lines() {
         let trimmed = line.trim_start();
-        // splitn(3, ws) gives [pid, ppid, "rest of line including spaces"]
         let mut parts = trimmed.splitn(3, char::is_whitespace);
         let Some(pid_s) = parts.next() else { continue };
         let Some(ppid_s) = parts.next() else { continue };
@@ -258,20 +272,25 @@ fn is_claude_running_under(root_pid: u32) -> bool {
         let Ok(ppid) = ppid_s.parse::<u32>() else { continue };
         ppid_of.insert(pid, ppid);
         if is_claude_cmd(cmd) {
-            claude_pids.push(pid);
+            claude_entries.push((pid, cmd.to_string()));
         }
     }
 
-    for claude_pid in claude_pids {
+    for (claude_pid, cmd) in claude_entries {
         let mut cur = claude_pid;
         for _ in 0..64 {
-            if cur == root_pid { return true }
+            if cur == root_pid {
+                // Skip the program name, keep the rest as argv.
+                let mut tokens = cmd.split_whitespace();
+                tokens.next();
+                return Some(tokens.map(String::from).collect());
+            }
             let Some(&parent) = ppid_of.get(&cur) else { break };
             if parent <= 1 { break }
             cur = parent;
         }
     }
-    false
+    None
 }
 
 /// Returns the current working directory of `pid` via macOS `lsof`.

@@ -20,7 +20,12 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                     let _ = w.set_focus();
                 }
             }
-            "quit" => app.exit(0),
+            "quit" => {
+                // Tray menu is an explicit choice — hard-exit, bypassing the
+                // renderer confirm modal.
+                let _ = app;
+                std::process::exit(0);
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, ev| {

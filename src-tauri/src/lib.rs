@@ -10,7 +10,16 @@ mod tray;
 use commands::canvases::*;
 use commands::nodes::*;
 use db::Db;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+
+/// Hard exit. Bypasses Tauri's RunEvent::ExitRequested entirely, so neither
+/// the renderer modal nor any other handler can second-guess this. Only
+/// called after the user has explicitly confirmed quit (via the modal's
+/// "Quit" button or the tray menu).
+#[tauri::command]
+fn confirm_quit() {
+    std::process::exit(0);
+}
 
 /// When launched from Finder/Applications the inherited PATH is the bare
 /// `/usr/bin:/bin:/usr/sbin:/sbin`, so user-installed tools (brew, cargo,
@@ -46,6 +55,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .on_window_event(|window, event| tray::on_window_event(window, event))
+        .on_menu_event(|app, ev| {
+            // Use a non-"quit" id; some Tauri internals/macOS conventions
+            // appear to special-case "quit" and auto-terminate.
+            if ev.id().as_ref() == "cc_quit" {
+                eprintln!("[code-cave] cc_quit menu -> emit app:quit-requested");
+                let _ = app.emit("app:quit-requested", ());
+            }
+        })
         .setup(|app| {
             let data_dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&data_dir).ok();
@@ -76,6 +93,21 @@ pub fn run() {
             tray::install(app.handle())?;
             menu::install(app.handle())?;
 
+            // macOS app menu with a *custom* Quit item we can intercept.
+            // PredefinedMenuItem::quit goes straight to NSApp.terminate and
+            // bypasses our RunEvent::ExitRequested hook, so the renderer
+            // never gets the chance to show the confirm modal.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
+                let quit_item = MenuItem::with_id(app, "cc_quit", "Quit Code Cave", true, Some("Cmd+Q"))?;
+                let app_menu = SubmenuBuilder::new(app, "Code Cave")
+                    .item(&quit_item)
+                    .build()?;
+                let menu = MenuBuilder::new(app).item(&app_menu).build()?;
+                app.set_menu(menu)?;
+            }
+
             Ok(())
         })
         .on_menu_event(|app, ev| menu::handle_menu_event(app, ev))
@@ -102,7 +134,15 @@ pub fn run() {
             commands::agents::agent_spawn,
             commands::app_state::app_state_get,
             commands::app_state::app_state_set,
+            confirm_quit,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                eprintln!("[code-cave] ExitRequested -> prevent + emit");
+                api.prevent_exit();
+                let _ = app.emit("app:quit-requested", ());
+            }
+        });
 }
