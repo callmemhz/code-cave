@@ -19,7 +19,14 @@ pub fn init(path: &Path) {
 }
 
 pub fn line(s: &str) {
-    eprintln!("{}", s);
+    // eprintln! panics on stderr write failure; on Finder-launched / launchd-
+    // reparented processes stderr can be broken, and a hot-path log call
+    // (agent_spawn, watcher tick) would abort the whole app. Write directly
+    // and swallow errors.
+    let mut err = std::io::stderr().lock();
+    let _ = err.write_all(s.as_bytes());
+    let _ = err.write_all(b"\n");
+    drop(err);
     if let Some(m) = FILE.get() {
         if let Ok(mut f) = m.lock() {
             let _ = writeln!(f, "{} {}", now_iso(), s);
