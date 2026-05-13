@@ -44,6 +44,19 @@ impl PtySession {
         let mut cmd = CommandBuilder::new(program);
         for a in args { cmd.arg(a); }
         cmd.cwd(shellexpand_or_passthrough(cwd));
+        // When launched from Finder, the .app's parent env has no TERM /
+        // COLORTERM / LANG — children fall back to non-color output and
+        // ASCII-only rendering. Seed sensible defaults; explicit env from
+        // the caller still overrides below.
+        if std::env::var_os("TERM").is_none() {
+            cmd.env("TERM", "xterm-256color");
+        }
+        if std::env::var_os("COLORTERM").is_none() {
+            cmd.env("COLORTERM", "truecolor");
+        }
+        if std::env::var_os("LANG").is_none() {
+            cmd.env("LANG", "en_US.UTF-8");
+        }
         for (k, v) in env { cmd.env(k, v); }
 
         let mut child = pair.slave.spawn_command(cmd)
