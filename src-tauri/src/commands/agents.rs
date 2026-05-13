@@ -35,6 +35,10 @@ pub fn agent_spawn(
         AgentKind::Claude => build_claude(resume_id.as_deref(), &extra_args),
         AgentKind::Codex => build_codex(resume_id.as_deref(), &extra_args),
     };
+    crate::log_line!(
+        "[code-cave] agent_spawn node={} cwd={} program={} args={:?} resume_id={:?}",
+        node_id, cwd, launch.program, launch.args, resume_id
+    );
 
     let initial = db::scrollback::read(&db, &node_id)?;
     let app_for_cb = app.clone();
@@ -97,6 +101,34 @@ pub(crate) fn update_resume_session_id(app: &AppHandle, node_id: &str, new_id: &
     let _ = app.emit(&format!("agent:session:{node_id}"), new_id.to_string());
 }
 
+/// Set node.data_json's `resume_session_id` to null and notify the renderer
+/// (empty string payload). Used when the claude PID changes (Ctrl+C +
+/// relaunch in the same pane) so the title doesn't keep showing the dead
+/// session's id until the user types into the new one.
+pub(crate) fn clear_resume_session_id(app: &AppHandle, node_id: &str) {
+    let Some(db) = app.try_state::<Db>() else { return };
+    let current: Result<String, _> = {
+        let conn = db.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT data_json FROM nodes WHERE id=?",
+            [node_id],
+            |r| r.get::<_, String>(0),
+        )
+    };
+    let Ok(json_str) = current else { return };
+    let mut v: serde_json::Value =
+        serde_json::from_str(&json_str).unwrap_or(serde_json::json!({}));
+    if v.get("resume_session_id").map_or(true, |x| x.is_null()) {
+        return;
+    }
+    if let Some(map) = v.as_object_mut() {
+        map.insert("resume_session_id".into(), serde_json::Value::Null);
+    }
+    let new_json = serde_json::to_string(&v).unwrap_or(json_str);
+    let _ = db::nodes::update_data(&db, node_id, &new_json);
+    let _ = app.emit(&format!("agent:session:{node_id}"), String::new());
+}
+
 pub(crate) fn encode_claude_project_dir(cwd: &str) -> PathBuf {
     let expanded = if let Some(rest) = cwd.strip_prefix("~") {
         match dirs::home_dir() {
@@ -117,7 +149,7 @@ pub(crate) fn encode_claude_project_dir(cwd: &str) -> PathBuf {
     p
 }
 
-fn is_uuid_like(s: &str) -> bool {
+pub(crate) fn is_uuid_like(s: &str) -> bool {
     if s.len() != 36 {
         return false;
     }

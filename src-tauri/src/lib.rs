@@ -1,4 +1,5 @@
 mod agents;
+mod applog;
 mod commands;
 mod db;
 mod error;
@@ -59,13 +60,14 @@ pub fn run() {
             // Use a non-"quit" id; some Tauri internals/macOS conventions
             // appear to special-case "quit" and auto-terminate.
             if ev.id().as_ref() == "cc_quit" {
-                eprintln!("[code-cave] cc_quit menu -> emit app:quit-requested");
+                crate::log_line!("[code-cave] cc_quit menu -> emit app:quit-requested");
                 let _ = app.emit("app:quit-requested", ());
             }
         })
         .setup(|app| {
             let data_dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&data_dir).ok();
+            applog::init(&data_dir.join("code-cave.log"));
             let db_path = data_dir.join("code-cave.sqlite");
             let db = Db::open(&db_path).expect("open db");
             if db::canvases::list(&db).expect("list canvases").is_empty() {
@@ -155,7 +157,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                eprintln!("[code-cave] ExitRequested -> prevent + emit");
+                crate::log_line!("[code-cave] ExitRequested -> prevent + emit");
                 api.prevent_exit();
                 let _ = app.emit("app:quit-requested", ());
             }

@@ -105,8 +105,12 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
       unlistens.push(u2);
 
       const u3 = await onAgentSession(dbNode.id, (id) => {
-        setSessionId(id);
-        const merged: AgentData = { ...parsed, resume_session_id: id };
+        // Empty string = "session cleared" (claude PID changed in pane, new
+        // claude hasn't produced a jsonl yet). Treat as null so the title
+        // drops the stale id and respawn doesn't pass --resume "".
+        const next = id === "" ? null : id;
+        setSessionId(next);
+        const merged: AgentData = { ...parsed, resume_session_id: next };
         updateData(dbNode.id, JSON.stringify(merged));
       });
       if (cancelled) { u3(); return; }
