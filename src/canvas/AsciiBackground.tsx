@@ -153,12 +153,12 @@ function drawStarfield(ctx: CanvasRenderingContext2D, w: number, h: number, t: n
       const h2 = hash2(gx, gy);
       // ~2.5% density
       if (h2 % 40 !== 0) continue;
-      const twinkleSpeed = 0.6 + ((h2 >> 8) % 100) / 100; // 0.6..1.6
+      const twinkleSpeed = 0.6 + ((h2 >>> 8) % 100) / 100; // 0.6..1.6
       const phase = (h2 % 360) / 57.3; // 0..2π-ish
       const b = 0.4 + 0.5 * Math.sin(t * twinkleSpeed + phase);
-      const ch = STAR_CHARS[(h2 >> 4) % STAR_CHARS.length];
+      const ch = STAR_CHARS[(h2 >>> 4) % STAR_CHARS.length];
       // subtle warm/cool variation
-      const warm = (h2 >> 12) & 1;
+      const warm = (h2 >>> 12) & 1;
       const color = warm
         ? `rgba(255, 240, 200, ${b * 0.75})`
         : `rgba(200, 220, 255, ${b * 0.75})`;
