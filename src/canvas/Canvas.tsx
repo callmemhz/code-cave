@@ -140,7 +140,10 @@ export function Canvas() {
   if (!active) return <div style={{ padding: 24 }}>No canvas</div>;
 
   return (
-    <>
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <div style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+        <BackgroundLayer />
+      </div>
       <ReactFlow
         key={active.id}
         nodes={flowNodes}
@@ -168,7 +171,6 @@ export function Canvas() {
         // still fire (rename = double-click on title).
         nodeDragThreshold={4}
       >
-        <BackgroundLayer />
         <MiniMap pannable zoomable />
         <Controls showInteractive={false} />
       </ReactFlow>
@@ -191,6 +193,6 @@ export function Canvas() {
           }}
         />
       )}
-    </>
+    </div>
   );
 }
