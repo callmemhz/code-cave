@@ -1,5 +1,8 @@
+import { useEffect, useRef } from "react";
 import { useStore, useReactFlow, type ReactFlowState } from "@xyflow/react";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useCanvasStore } from "../store/canvasStore";
+import { onPtyData } from "../ipc/events";
 import {
   computeOffscreenLabel,
   type Edge,
@@ -19,11 +22,25 @@ function pillTransform(edge: Edge): string {
   }
 }
 
+// Keyframes injected once. Inline styles can't express @keyframes.
+const BREATHE_STYLE_ID = "offscreen-label-breathe";
+function ensureBreatheKeyframes() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(BREATHE_STYLE_ID)) return;
+  const el = document.createElement("style");
+  el.id = BREATHE_STYLE_ID;
+  el.textContent =
+    "@keyframes offscreen-label-breathe { 0%,100% { opacity: 0.6 } 50% { opacity: 1 } }";
+  document.head.appendChild(el);
+}
+
 const transformSel = (s: ReactFlowState) => s.transform;
 const widthSel = (s: ReactFlowState) => s.width;
 const heightSel = (s: ReactFlowState) => s.height;
 
 export function OffscreenLabels() {
+  ensureBreatheKeyframes();
+
   const transform = useStore(transformSel);
   const W = useStore(widthSel);
   const H = useStore(heightSel);
@@ -31,7 +48,50 @@ export function OffscreenLabels() {
   const nodes = useCanvasStore((s) =>
     activeId ? s.nodesByCanvas[activeId] ?? [] : [],
   );
+  const unreadByNode = useCanvasStore((s) => s.unreadByNode);
+  const markUnread = useCanvasStore((s) => s.markUnread);
+  const markRead = useCanvasStore((s) => s.markRead);
   const rf = useReactFlow();
+
+  // Refs let the PTY listener read the current viewport + node positions
+  // without re-subscribing on every pan/zoom/drag tick.
+  const vpRef = useRef({ tx: transform[0], ty: transform[1], zoom: transform[2], W, H });
+  vpRef.current = { tx: transform[0], ty: transform[1], zoom: transform[2], W, H };
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  // Subscribe to pty:data for every node in the active canvas. Re-sub only
+  // when the set of node ids changes (not on position/size updates).
+  const nodeIdsKey = nodes.map((n) => n.id).join(",");
+  useEffect(() => {
+    const unsubs: UnlistenFn[] = [];
+    let cancelled = false;
+    for (const id of nodeIdsKey ? nodeIdsKey.split(",") : []) {
+      onPtyData(id, () => {
+        const v = vpRef.current;
+        if (!v.W || !v.H) return;
+        const node = nodesRef.current.find((x) => x.id === id);
+        if (!node) return;
+        const cxFlow = node.x + node.width / 2;
+        const cyFlow = node.y + node.height / 2;
+        const vMinX = -v.tx / v.zoom;
+        const vMinY = -v.ty / v.zoom;
+        const vMaxX = vMinX + v.W / v.zoom;
+        const vMaxY = vMinY + v.H / v.zoom;
+        const centerInside =
+          cxFlow >= vMinX && cxFlow <= vMaxX &&
+          cyFlow >= vMinY && cyFlow <= vMaxY;
+        if (!centerInside) markUnread(id);
+      }).then((u) => {
+        if (cancelled) u();
+        else unsubs.push(u);
+      });
+    }
+    return () => {
+      cancelled = true;
+      for (const u of unsubs) u();
+    };
+  }, [nodeIdsKey, markUnread]);
 
   if (!W || !H) return null;
 
@@ -61,16 +121,19 @@ export function OffscreenLabels() {
         zIndex: 4,
       }}
     >
-      {labels.map((l) => (
+      {labels.map((l) => {
+        const unread = !!unreadByNode[l.id];
+        return (
         <button
           key={l.id}
           className="nodrag"
-          onClick={() =>
+          onClick={() => {
             rf.setCenter(l.cxFlow, l.cyFlow, {
               zoom: vp.zoom,
               duration: 250,
-            })
-          }
+            });
+            markRead(l.id);
+          }}
           title={l.title}
           style={{
             position: "absolute",
@@ -92,6 +155,7 @@ export function OffscreenLabels() {
             cursor: "pointer",
             font: "inherit",
             boxShadow: "0 1px 3px rgba(0,0,0,0.4)",
+            animation: unread ? "offscreen-label-breathe 1.4s ease-in-out infinite" : undefined,
           }}
         >
           <span
@@ -117,7 +181,8 @@ export function OffscreenLabels() {
             {l.title}
           </span>
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
