@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ReactFlow, Background, Controls, MiniMap,
+  ReactFlow, Controls, MiniMap,
   useReactFlow,
   type Node, type Viewport,
 } from "@xyflow/react";
+import { BackgroundLayer } from "./BackgroundLayer";
 import { useCanvasStore } from "../store/canvasStore";
 import { nodeTypes } from "./nodeTypes";
 import { ContextMenu } from "./ContextMenu";
@@ -167,7 +168,7 @@ export function Canvas() {
         // still fire (rename = double-click on title).
         nodeDragThreshold={4}
       >
-        <Background />
+        <BackgroundLayer />
         <MiniMap pannable zoomable />
         <Controls showInteractive={false} />
       </ReactFlow>
