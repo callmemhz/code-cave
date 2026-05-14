@@ -11,6 +11,10 @@ interface CanvasState {
   canvases: Canvas[];
   activeCanvasId: string | null;
   nodesByCanvas: Record<string, DbNode[]>;
+  // Per-node "has unread output since user last attended" flag, in-memory only.
+  // Set when PTY data arrives while the pane's center is off-screen; cleared
+  // when the user clicks the off-screen indicator.
+  unreadByNode: Record<string, true>;
 
   loadAll: () => Promise<void>;
   setActive: (id: string) => Promise<void>;
@@ -27,6 +31,8 @@ interface CanvasState {
   updateNodeData: (id: string, dataJson: string) => void;
   updateNodeTitle: (id: string, title: string | null) => Promise<void>;
   deleteNode: (id: string) => Promise<void>;
+  markUnread: (id: string) => void;
+  markRead: (id: string) => void;
 }
 
 const saveViewportDebounced = debounce(Canvases.canvasUpdateViewport, 300);
@@ -38,6 +44,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   canvases: [],
   activeCanvasId: null,
   nodesByCanvas: {},
+  unreadByNode: {},
 
   loadAll: async () => {
     const canvases = await Canvases.canvasList();
@@ -185,7 +192,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       for (const cid of Object.keys(next)) {
         next[cid] = next[cid].filter((n) => n.id !== id);
       }
-      return { nodesByCanvas: next };
+      const { [id]: _, ...unreadByNode } = s.unreadByNode;
+      return { nodesByCanvas: next, unreadByNode };
+    });
+  },
+
+  markUnread: (id) => {
+    set((s) => (s.unreadByNode[id] ? s : { unreadByNode: { ...s.unreadByNode, [id]: true } }));
+  },
+
+  markRead: (id) => {
+    set((s) => {
+      if (!s.unreadByNode[id]) return s;
+      const { [id]: _, ...rest } = s.unreadByNode;
+      return { unreadByNode: rest };
     });
   },
 }));
