@@ -5,6 +5,7 @@ import {
   type Node, type Viewport,
 } from "@xyflow/react";
 import { BackgroundLayer } from "./BackgroundLayer";
+import { OffscreenLabels } from "./OffscreenLabels";
 import { useCanvasStore } from "../store/canvasStore";
 import { nodeTypes } from "./nodeTypes";
 import { ContextMenu } from "./ContextMenu";
@@ -173,6 +174,7 @@ export function Canvas() {
       >
         <MiniMap pannable zoomable />
         <Controls showInteractive={false} />
+        <OffscreenLabels />
       </ReactFlow>
       {menu && (
         <ContextMenu
