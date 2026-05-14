@@ -72,16 +72,17 @@ export function computeOffscreenLabel(
   const vMaxX = vMinX + vp.W / vp.zoom;
   const vMaxY = vMinY + vp.H / vp.zoom;
 
-  const nMaxX = n.x + n.width;
-  const nMaxY = n.y + n.height;
-
-  const intersects =
-    nMaxX >= vMinX && n.x <= vMaxX &&
-    nMaxY >= vMinY && n.y <= vMaxY;
-  if (intersects) return null;
-
   const cxFlow = n.x + n.width / 2;
   const cyFlow = n.y + n.height / 2;
+
+  // Show the indicator whenever the pane's CENTER is outside the viewport,
+  // even if some edge of the pane is still visible — otherwise a barely-
+  // peeking pane gives no hint about which renamed pane it is.
+  const centerInside =
+    cxFlow >= vMinX && cxFlow <= vMaxX &&
+    cyFlow >= vMinY && cyFlow <= vMaxY;
+  if (centerInside) return null;
+
   const cxScreen = cxFlow * vp.zoom + vp.tx;
   const cyScreen = cyFlow * vp.zoom + vp.ty;
 
