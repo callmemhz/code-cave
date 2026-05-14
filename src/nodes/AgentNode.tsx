@@ -160,6 +160,11 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
     return () => ro.disconnect();
   }, [dbNode.id]);
 
+  const worktreeName = useMemo(() => {
+    const i = parsed.args.findIndex((a) => a === "-w" || a === "--worktree");
+    return i >= 0 && i + 1 < parsed.args.length ? parsed.args[i + 1] : null;
+  }, [parsed.args]);
+
   const label = kind === "claude" ? "Claude Code" : "Codex";
   const accent = kind === "claude"
     ? "rgba(217, 119, 87, 0.18)"   // Anthropic orange
@@ -177,8 +182,8 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
         handleStyle={{ width: 12, height: 12, background: "transparent", border: "none" }}
       />
       <NodeHeader
-        title={dbNode.title ?? label}
-        subtitle={`${parsed.cwd}${sessionId ? ` · ${sessionId.slice(0, 8)}` : ""}`}
+        title={dbNode.title ?? (worktreeName ? `${label} · ${worktreeName}` : label)}
+        subtitle={`${worktreeName ? `wt:${worktreeName} · ` : ""}${parsed.cwd}${sessionId ? ` · ${sessionId.slice(0, 8)}` : ""}`}
         accent={accent}
         badge={<span style={{
           width: 8, height: 8, borderRadius: 4,

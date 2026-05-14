@@ -1,6 +1,7 @@
 use crate::commands::agents::{
     clear_resume_session_id, encode_claude_project_dir, find_latest_session_id,
-    find_latest_session_id_after, is_uuid_like, update_resume_session_id,
+    find_latest_session_id_after, is_uuid_like, parse_worktree_arg,
+    resolve_session_storage_dir, update_resume_session_id,
 };
 use crate::db::{self, Db};
 use crate::error::{AppError, AppResult};
@@ -108,21 +109,30 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
             // of project_dir (from tracked_cwd) below is the right path.
             let active_session = claude_info
                 .as_ref()
-                .and_then(|(pid, _)| find_claude_active_session(*pid, &tracked_cwd));
+                .and_then(|(pid, args)| {
+                    let storage = resolve_session_storage_dir(&tracked_cwd, args);
+                    find_claude_active_session(*pid, &tracked_cwd, &storage)
+                });
 
-            // cwd tracking has DIFFERENT rules based on mode:
-            //   - Terminal mode (claude not running): follow shell's
-            //     cwd via lsof so `cd` survives restart.
-            //   - Claude mode (running): only update cwd when an
-            //     active_session is found (it gives us the PROJECT
-            //     root by decoding the .jsonl's parent dir). NEVER
-            //     fall back to claude's runtime cwd — `claude -w foo`
-            //     runs in the worktree, but sessions live in the main
-            //     project dir, and using the worktree cwd would break
-            //     `claude --resume` on the next launch.
+            // cwd tracking rules:
+            //   - Terminal mode (claude not running): follow shell's cwd
+            //     via lsof so `cd` survives restart.
+            //   - Plain claude mode: only update cwd when active_session
+            //     is found (covers `/resume` cross-project, which moves
+            //     the session to a different project dir on disk).
+            //   - Claude worktree mode (`-w <name>`): keep tracked_cwd at
+            //     the shell's launch cwd. `-w` arg resolves relative to
+            //     that, and we derive the (different) session-storage dir
+            //     separately via [`resolve_session_storage_dir`]. Following
+            //     active_session.cwd here would push tracked_cwd into the
+            //     worktree path, breaking `-w name` resolution on respawn.
+            let is_worktree_mode = claude_info
+                .as_ref()
+                .map(|(_, a)| parse_worktree_arg(a).is_some())
+                .unwrap_or(false);
             if claude_alive {
                 if let Some((session_cwd, _)) = &active_session {
-                    if session_cwd != &tracked_cwd {
+                    if !is_worktree_mode && session_cwd != &tracked_cwd {
                         tracked_cwd = session_cwd.clone();
                         update_node_cwd_if_changed(&app, &node_id, session_cwd);
                     }
@@ -131,8 +141,7 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
                     // (user did `cd /B && claude` faster than one watcher
                     // tick). The shell's cwd is the dir claude was launched
                     // from — the right project root for both plain and -w
-                    // mode. Authoritative active_session.cwd will overwrite
-                    // this once the jsonl appears.
+                    // mode.
                     if let Some(pid) = pty_pid {
                         if let Some(shell_cwd) = get_process_cwd(pid) {
                             if shell_cwd != tracked_cwd {
@@ -150,9 +159,14 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
                 }
             }
 
-            // project_dir derives from the live tracked cwd so worktree-mode
-            // sessions land in the right ~/.claude/projects/<encoded> dir.
-            let project_dir = encode_claude_project_dir(&tracked_cwd);
+            // project_dir is the ~/.claude/projects/<encoded>/ dir claude
+            // actually writes sessions to. For `-w <name>` mode that's NOT
+            // encode(tracked_cwd) — it's encode(<tracked_cwd>/.claude/worktrees/<name>).
+            // [`resolve_session_storage_dir`] handles both cases.
+            let project_dir = match &claude_info {
+                Some((_, a)) => resolve_session_storage_dir(&tracked_cwd, a),
+                None => encode_claude_project_dir(&tracked_cwd),
+            };
 
             if !promoted {
                 let session_id = find_latest_session_id_after(&project_dir, Some(started_at));
@@ -380,13 +394,19 @@ fn find_claude_process_under(root_pid: u32) -> Option<(u32, Vec<String>)> {
 /// tracked_cwd is already correct (and surviving `-w` mode). Only when the
 /// dirs differ — typically `/resume` cross-project — do we fall back to
 /// reading the cwd field out of the jsonl content.
-fn find_claude_active_session(pid: u32, tracked_cwd: &str) -> Option<(String, String)> {
+fn find_claude_active_session(
+    pid: u32,
+    tracked_cwd: &str,
+    expected_storage_dir: &std::path::Path,
+) -> Option<(String, String)> {
     let output = std::process::Command::new("lsof")
         .args(["-p", &pid.to_string(), "-F", "n"])
         .output()
         .ok()?;
     let s = String::from_utf8_lossy(&output.stdout);
-    let expected_parent = encode_claude_project_dir(tracked_cwd)
+    // For `-w` mode this is encode(worktree-abs-path); otherwise encode(cwd).
+    // A jsonl whose parent matches means "the session this pane owns".
+    let expected_parent = expected_storage_dir
         .file_name()
         .and_then(|s| s.to_str())
         .map(|s| s.to_string());
@@ -411,10 +431,11 @@ fn find_claude_active_session(pid: u32, tracked_cwd: &str) -> Option<(String, St
     None
 }
 
-/// Read the session's original cwd out of the .jsonl file itself. Claude
-/// writes the cwd into every event object; the dir-name encoding is lossy
-/// (both `/` and `.` map to `-`) so parsing the file is way more reliable
-/// than trying to reverse the encoding.
+/// Read the session's cwd out of the .jsonl file itself. Plain-mode events
+/// carry a top-level `cwd`; `-w` worktree sessions instead have a
+/// `worktree-state` event with `worktreeSession.worktreePath`. Either way,
+/// parsing the file beats trying to reverse the lossy dir-name encoding
+/// (both `/` and `.` map to `-`).
 fn read_session_cwd(jsonl_path: &std::path::Path) -> Option<String> {
     use std::io::{BufRead, BufReader};
     let f = std::fs::File::open(jsonl_path).ok()?;
@@ -425,6 +446,12 @@ fn read_session_cwd(jsonl_path: &std::path::Path) -> Option<String> {
         let Ok(v): Result<serde_json::Value, _> = serde_json::from_str(&line) else { continue };
         if let Some(cwd) = v.get("cwd").and_then(|x| x.as_str()) {
             return Some(cwd.to_string());
+        }
+        if let Some(wt) = v.get("worktreeSession")
+            .and_then(|x| x.get("worktreePath"))
+            .and_then(|x| x.as_str())
+        {
+            return Some(wt.to_string());
         }
     }
     None
