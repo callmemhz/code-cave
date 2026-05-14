@@ -112,4 +112,27 @@ describe("computeOffscreenLabel", () => {
     const r = computeOffscreenLabel(n, VP, PAD);
     expect(r!.title).toBe("Named");
   });
+
+  it("returns a left-edge anchor for a pane off to the left", () => {
+    const n = mkNode({ x: -500, y: 260, width: 100, height: 80 });
+    const r = computeOffscreenLabel(n, VP, PAD);
+    expect(r).not.toBeNull();
+    expect(r!.ax).toBeCloseTo(PAD);
+  });
+
+  it("returns a top-edge anchor for a pane off above", () => {
+    const n = mkNode({ x: 450, y: -300, width: 100, height: 80 });
+    const r = computeOffscreenLabel(n, VP, PAD);
+    expect(r).not.toBeNull();
+    expect(r!.ay).toBeCloseTo(PAD);
+  });
+
+  it("handles non-zero pan: pane that is off-screen due to translation", () => {
+    // tx = -1500 pans the viewport so it now sees flow x in [1500, 2500].
+    // Place a pane at flow x=0 (way to the left of the visible window).
+    const n = mkNode({ x: 0, y: 260, width: 100, height: 80 });
+    const r = computeOffscreenLabel(n, { ...VP, tx: -1500 }, PAD);
+    expect(r).not.toBeNull();
+    expect(r!.ax).toBeCloseTo(PAD); // anchor should be on the LEFT edge
+  });
 });
