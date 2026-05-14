@@ -4,7 +4,7 @@ import App from "./App";
 
 const style = document.createElement("style");
 style.textContent = `
-  html, body, #root { height: 100%; margin: 0; }
+  html, body, #root { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
   body { background: #0d0d0d; color: #e0e0e0; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
   *, *::before, *::after { box-sizing: border-box; }
   .react-flow__node { background: transparent; border: none; padding: 0; }
