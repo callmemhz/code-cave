@@ -1,9 +1,12 @@
 import type { DbNode } from "../types";
 
+export type Edge = "left" | "right" | "top" | "bottom";
+
 export interface EdgeAnchor {
   ax: number;
   ay: number;
   angle: number;
+  edge: Edge;
 }
 
 export function intersectEdgeAnchor(
@@ -18,10 +21,13 @@ export function intersectEdgeAnchor(
   const tX = dx !== 0 ? halfW / Math.abs(dx) : Infinity;
   const tY = dy !== 0 ? halfH / Math.abs(dy) : Infinity;
   const t = Math.min(tX, tY);
+  const edge: Edge =
+    tX <= tY ? (dx >= 0 ? "right" : "left") : dy >= 0 ? "bottom" : "top";
   return {
     ax: W / 2 + dx * t,
     ay: H / 2 + dy * t,
     angle: Math.atan2(dy, dx),
+    edge,
   };
 }
 
@@ -45,6 +51,8 @@ export interface OffscreenLabel {
   ay: number;
   /** Arrow rotation in radians; base orientation points to +x. */
   angle: number;
+  /** Which container edge the anchor lies on; drives pill alignment. */
+  edge: Edge;
   /** Pane center in flow coordinates, used by setCenter. */
   cxFlow: number;
   cyFlow: number;
@@ -81,6 +89,6 @@ export function computeOffscreenLabel(
   const dy = cyScreen - vp.H / 2;
   if (dx === 0 && dy === 0) return null;
 
-  const { ax, ay, angle } = intersectEdgeAnchor(dx, dy, vp.W, vp.H, pad);
-  return { id: n.id, title, ax, ay, angle, cxFlow, cyFlow };
+  const { ax, ay, angle, edge } = intersectEdgeAnchor(dx, dy, vp.W, vp.H, pad);
+  return { id: n.id, title, ax, ay, angle, edge, cxFlow, cyFlow };
 }

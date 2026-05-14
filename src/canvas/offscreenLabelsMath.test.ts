@@ -10,6 +10,7 @@ describe("intersectEdgeAnchor", () => {
     expect(r.ax).toBeCloseTo(W - PAD);
     expect(r.ay).toBeCloseTo(H / 2);
     expect(r.angle).toBeCloseTo(0);
+    expect(r.edge).toBe("right");
   });
 
   it("returns the left edge for a purely-left direction", () => {
@@ -17,6 +18,7 @@ describe("intersectEdgeAnchor", () => {
     expect(r.ax).toBeCloseTo(PAD);
     expect(r.ay).toBeCloseTo(H / 2);
     expect(r.angle).toBeCloseTo(Math.PI);
+    expect(r.edge).toBe("left");
   });
 
   it("returns the bottom edge for a purely-down direction", () => {
@@ -24,6 +26,7 @@ describe("intersectEdgeAnchor", () => {
     expect(r.ax).toBeCloseTo(W / 2);
     expect(r.ay).toBeCloseTo(H - PAD);
     expect(r.angle).toBeCloseTo(Math.PI / 2);
+    expect(r.edge).toBe("bottom");
   });
 
   it("returns the top edge for a purely-up direction", () => {
@@ -31,6 +34,7 @@ describe("intersectEdgeAnchor", () => {
     expect(r.ax).toBeCloseTo(W / 2);
     expect(r.ay).toBeCloseTo(PAD);
     expect(r.angle).toBeCloseTo(-Math.PI / 2);
+    expect(r.edge).toBe("top");
   });
 
   it("hits the top/bottom edge first when |dy|/H dominates", () => {
@@ -39,6 +43,7 @@ describe("intersectEdgeAnchor", () => {
     const r = intersectEdgeAnchor(200, 200, W, H, PAD);
     expect(r.ay).toBeCloseTo(H - PAD); // hits bottom
     expect(r.ax).toBeCloseTo(W / 2 + 284); // 500 + 284 = 784
+    expect(r.edge).toBe("bottom");
   });
 
   it("hits the left/right edge first when |dx|/W dominates", () => {
@@ -46,6 +51,7 @@ describe("intersectEdgeAnchor", () => {
     const r = intersectEdgeAnchor(400, 100, W, H, PAD);
     expect(r.ax).toBeCloseTo(W - PAD); // hits right
     expect(r.ay).toBeCloseTo(H / 2 + 121); // 300 + 121
+    expect(r.edge).toBe("right");
   });
 });
 
@@ -92,6 +98,7 @@ describe("computeOffscreenLabel", () => {
     const r = computeOffscreenLabel(n, VP, PAD);
     expect(r).not.toBeNull();
     expect(r!.ax).toBeCloseTo(VP.W - PAD);
+    expect(r!.edge).toBe("right");
     expect(r!.title).toBe("My Pane");
     expect(r!.cxFlow).toBeCloseTo(2050);
     expect(r!.cyFlow).toBeCloseTo(300);

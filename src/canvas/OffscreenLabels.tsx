@@ -1,8 +1,23 @@
 import { useStore, useReactFlow, type ReactFlowState } from "@xyflow/react";
 import { useCanvasStore } from "../store/canvasStore";
-import { computeOffscreenLabel, type ViewportPx } from "./offscreenLabelsMath";
+import {
+  computeOffscreenLabel,
+  type Edge,
+  type ViewportPx,
+} from "./offscreenLabelsMath";
 
 const PAD = 16;
+
+// Anchor the pill so it grows inward from the edge it's pinned to,
+// keeping the whole label visible regardless of which side.
+function pillTransform(edge: Edge): string {
+  switch (edge) {
+    case "left":   return "translate(0, -50%)";
+    case "right":  return "translate(-100%, -50%)";
+    case "top":    return "translate(-50%, 0)";
+    case "bottom": return "translate(-50%, -100%)";
+  }
+}
 
 const transformSel = (s: ReactFlowState) => s.transform;
 const widthSel = (s: ReactFlowState) => s.width;
@@ -61,7 +76,7 @@ export function OffscreenLabels() {
             position: "absolute",
             left: l.ax,
             top: l.ay,
-            transform: "translate(-50%, -50%)",
+            transform: pillTransform(l.edge),
             display: "flex",
             alignItems: "center",
             gap: 4,
