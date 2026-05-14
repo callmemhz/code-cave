@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod error;
 mod events;
+mod menu;
 mod pty;
 mod tray;
 
@@ -73,9 +74,11 @@ pub fn run() {
             });
 
             tray::install(app.handle())?;
+            menu::install(app.handle())?;
 
             Ok(())
         })
+        .on_menu_event(|app, ev| menu::handle_menu_event(app, ev))
         .invoke_handler(tauri::generate_handler![
             canvas_list,
             canvas_create,
