@@ -1,3 +1,5 @@
+import type { DbNode } from "../types";
+
 export interface EdgeAnchor {
   ax: number;
   ay: number;
@@ -21,4 +23,64 @@ export function intersectEdgeAnchor(
     ay: H / 2 + dy * t,
     angle: Math.atan2(dy, dx),
   };
+}
+
+export interface ViewportPx {
+  /** ReactFlow translate.x in CSS px (negative = pan right). */
+  tx: number;
+  /** ReactFlow translate.y in CSS px. */
+  ty: number;
+  zoom: number;
+  /** Container width in CSS px. */
+  W: number;
+  /** Container height in CSS px. */
+  H: number;
+}
+
+export interface OffscreenLabel {
+  id: string;
+  title: string;
+  /** Anchor in screen-space CSS px, relative to ReactFlow container. */
+  ax: number;
+  ay: number;
+  /** Arrow rotation in radians; base orientation points to +x. */
+  angle: number;
+  /** Pane center in flow coordinates, used by setCenter. */
+  cxFlow: number;
+  cyFlow: number;
+}
+
+export function computeOffscreenLabel(
+  n: DbNode,
+  vp: ViewportPx,
+  pad: number,
+): OffscreenLabel | null {
+  const title = n.title?.trim();
+  if (!title) return null;
+
+  // Viewport rect in flow coords.
+  const vMinX = -vp.tx / vp.zoom;
+  const vMinY = -vp.ty / vp.zoom;
+  const vMaxX = vMinX + vp.W / vp.zoom;
+  const vMaxY = vMinY + vp.H / vp.zoom;
+
+  const nMaxX = n.x + n.width;
+  const nMaxY = n.y + n.height;
+
+  const intersects =
+    nMaxX >= vMinX && n.x <= vMaxX &&
+    nMaxY >= vMinY && n.y <= vMaxY;
+  if (intersects) return null;
+
+  const cxFlow = n.x + n.width / 2;
+  const cyFlow = n.y + n.height / 2;
+  const cxScreen = cxFlow * vp.zoom + vp.tx;
+  const cyScreen = cyFlow * vp.zoom + vp.ty;
+
+  const dx = cxScreen - vp.W / 2;
+  const dy = cyScreen - vp.H / 2;
+  if (dx === 0 && dy === 0) return null;
+
+  const { ax, ay, angle } = intersectEdgeAnchor(dx, dy, vp.W, vp.H, pad);
+  return { id: n.id, title, ax, ay, angle, cxFlow, cyFlow };
 }
