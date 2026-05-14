@@ -65,6 +65,9 @@ pub fn run() {
             if db::canvases::list(&db).expect("list canvases").is_empty() {
                 db::canvases::create(&db, "default").expect("seed canvas");
             }
+            // Repair `-w <name>` panes whose resume_session_id is stale from
+            // before the worktree-aware session-storage-dir fix.
+            commands::agents::repair_worktree_resume_ids(&db);
             app.manage(db);
 
             let sup = pty::PtySupervisor::new();

@@ -66,7 +66,9 @@ pub fn agent_spawn(
     // mid-session is picked up reliably (the sniffer only sees output and
     // misses session swaps that don't print the new id prominently).
     if matches!(kind, AgentKind::Claude) {
-        start_claude_session_poller(app, node_id, cwd);
+        // Pass extra_args so the poller knows about `-w <name>` worktree mode
+        // and looks in the right ~/.claude/projects/<encoded>/ dir.
+        start_claude_session_poller(app, node_id, cwd, extra_args);
     }
 
     Ok(())
@@ -138,15 +140,59 @@ pub(crate) fn encode_claude_project_dir(cwd: &str) -> PathBuf {
     } else {
         cwd.to_string()
     };
-    // Claude encodes the cwd by replacing every "/" with "-" (the leading
-    // slash becomes a leading dash). Verified by inspection of
+    // Claude encodes the cwd by replacing every "/" AND every "." with "-"
+    // (the leading slash becomes a leading dash). So
+    // /Users/.../code-cave/.claude/worktrees/hinter becomes
+    // -Users-...-code-cave--claude-worktrees-hinter (note the double dash
+    // where ".claude" used to be). Verified by inspection of
     // ~/.claude/projects/.
-    let dashed = expanded.replace('/', "-");
+    let dashed: String = expanded
+        .chars()
+        .map(|c| if c == '/' || c == '.' { '-' } else { c })
+        .collect();
     let mut p = dirs::home_dir().unwrap_or_default();
     p.push(".claude");
     p.push("projects");
     p.push(dashed);
     p
+}
+
+/// Find the worktree name in a claude argv, if `-w <name>` / `--worktree <name>`
+/// is present. The name may be a bare worktree shortcut (e.g. "hinter") or
+/// an absolute path.
+pub(crate) fn parse_worktree_arg(args: &[String]) -> Option<&str> {
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        if a == "-w" || a == "--worktree" {
+            return iter.next().map(String::as_str);
+        }
+    }
+    None
+}
+
+/// Where ~/.claude/projects/<encoded>/ actually lives for a (cwd, args) pair.
+///
+/// For `claude -w <name>` mode, the session is stored under the WORKTREE's
+/// encoded absolute path (`<cwd>/.claude/worktrees/<name>`), not the launch
+/// cwd. For non-worktree panes, it's just `encode(cwd)`.
+pub(crate) fn resolve_session_storage_dir(cwd: &str, args: &[String]) -> PathBuf {
+    let Some(name) = parse_worktree_arg(args) else {
+        return encode_claude_project_dir(cwd);
+    };
+    let worktree_path = if Path::new(name).is_absolute() {
+        name.to_string()
+    } else {
+        let base = if let Some(rest) = cwd.strip_prefix("~") {
+            match dirs::home_dir() {
+                Some(home) => format!("{}{}", home.display(), rest),
+                None => cwd.to_string(),
+            }
+        } else {
+            cwd.to_string()
+        };
+        format!("{}/.claude/worktrees/{}", base.trim_end_matches('/'), name)
+    };
+    encode_claude_project_dir(&worktree_path)
 }
 
 pub(crate) fn is_uuid_like(s: &str) -> bool {
@@ -199,9 +245,71 @@ pub(crate) fn find_latest_session_id_after(
     best.map(|(_, id)| id)
 }
 
-fn start_claude_session_poller(app: AppHandle, node_id: String, cwd: String) {
+/// One-shot startup repair: legacy panes with `-w <name>` may have a
+/// `resume_session_id` that points to a session in the MAIN project's encoded
+/// dir (a stale id stolen from another pane), because earlier versions of the
+/// watcher used encode(cwd) instead of encode(worktree-abs-path) for `-w`
+/// mode. For each affected pane, point `resume_session_id` at the latest
+/// session that actually exists under the worktree's storage dir, or null it
+/// if there's nothing valid there. Without this, the first respawn after
+/// upgrading runs `claude --resume <stale-id>` and prints "conversation not
+/// found".
+pub fn repair_worktree_resume_ids(db: &Db) {
+    let rows: Vec<(String, String)> = {
+        let conn = db.conn.lock().unwrap();
+        let Ok(mut stmt) = conn.prepare("SELECT id, data_json FROM nodes WHERE type='claude'")
+        else { return };
+        stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map(|it| it.filter_map(Result::ok).collect())
+            .unwrap_or_default()
+    };
+    for (id, data_json) in rows {
+        let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&data_json) else { continue };
+        let cwd = v.get("cwd").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let args: Vec<String> = v
+            .get("args")
+            .and_then(|x| x.as_array())
+            .map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        if parse_worktree_arg(&args).is_none() {
+            continue;
+        }
+        let storage_dir = resolve_session_storage_dir(&cwd, &args);
+        let current = v.get("resume_session_id").and_then(|x| x.as_str()).map(String::from);
+        let already_valid = current
+            .as_ref()
+            .map(|sid| storage_dir.join(format!("{sid}.jsonl")).exists())
+            .unwrap_or(false);
+        if already_valid {
+            continue;
+        }
+        let new_id = find_latest_session_id(&storage_dir);
+        if let Some(map) = v.as_object_mut() {
+            map.insert(
+                "resume_session_id".into(),
+                match &new_id {
+                    Some(s) => serde_json::Value::String(s.clone()),
+                    None => serde_json::Value::Null,
+                },
+            );
+        }
+        let new_json = serde_json::to_string(&v).unwrap_or(data_json);
+        let _ = db::nodes::update_data(db, &id, &new_json);
+        crate::log_line!(
+            "[code-cave] repair worktree node {} resume_id {:?} -> {:?}",
+            id, current, new_id
+        );
+    }
+}
+
+fn start_claude_session_poller(
+    app: AppHandle,
+    node_id: String,
+    cwd: String,
+    args: Vec<String>,
+) {
     std::thread::spawn(move || {
-        let project_dir = encode_claude_project_dir(&cwd);
+        let project_dir = resolve_session_storage_dir(&cwd, &args);
         let mut last_seen: Option<String> = None;
         loop {
             std::thread::sleep(Duration::from_millis(1500));
@@ -221,4 +329,47 @@ fn start_claude_session_poller(app: AppHandle, node_id: String, cwd: String) {
             update_resume_session_id(&app, &node_id, &latest);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_replaces_slash_and_dot() {
+        // Matches what claude actually writes under ~/.claude/projects/.
+        let p = encode_claude_project_dir("/Users/me/src/foo/.claude/worktrees/bar");
+        assert!(p.ends_with("-Users-me-src-foo--claude-worktrees-bar"), "got {}", p.display());
+    }
+
+    #[test]
+    fn parse_worktree_arg_handles_short_and_long() {
+        let a: Vec<String> = ["--dangerously-skip-permissions", "-w", "hinter", "-c"]
+            .iter().map(|s| s.to_string()).collect();
+        assert_eq!(parse_worktree_arg(&a), Some("hinter"));
+        let b: Vec<String> = ["--worktree", "feat-x"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(parse_worktree_arg(&b), Some("feat-x"));
+        let c: Vec<String> = ["--dangerously-skip-permissions"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(parse_worktree_arg(&c), None);
+    }
+
+    #[test]
+    fn resolve_storage_dir_worktree_mode() {
+        let args: Vec<String> = ["-w", "hinter"].iter().map(|s| s.to_string()).collect();
+        let p = resolve_session_storage_dir("/Users/me/src/code-cave", &args);
+        assert!(p.ends_with("-Users-me-src-code-cave--claude-worktrees-hinter"), "got {}", p.display());
+    }
+
+    #[test]
+    fn resolve_storage_dir_plain_mode() {
+        let p = resolve_session_storage_dir("/Users/me/src/code-cave", &[]);
+        assert!(p.ends_with("-Users-me-src-code-cave"), "got {}", p.display());
+    }
+
+    #[test]
+    fn resolve_storage_dir_absolute_worktree_arg() {
+        let args: Vec<String> = ["-w", "/abs/path/to/wt"].iter().map(|s| s.to_string()).collect();
+        let p = resolve_session_storage_dir("/Users/me/src/foo", &args);
+        assert!(p.ends_with("-abs-path-to-wt"), "got {}", p.display());
+    }
 }
