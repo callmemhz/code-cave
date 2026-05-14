@@ -56,14 +56,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .on_window_event(|window, event| tray::on_window_event(window, event))
-        .on_menu_event(|app, ev| {
-            // Use a non-"quit" id; some Tauri internals/macOS conventions
-            // appear to special-case "quit" and auto-terminate.
-            if ev.id().as_ref() == "cc_quit" {
-                crate::log_line!("[code-cave] cc_quit menu -> emit app:quit-requested");
-                let _ = app.emit("app:quit-requested", ());
-            }
-        })
         .setup(|app| {
             let data_dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&data_dir).ok();
@@ -94,36 +86,6 @@ pub fn run() {
 
             tray::install(app.handle())?;
             menu::install(app.handle())?;
-
-            // macOS app menu with a *custom* Quit item we can intercept.
-            // PredefinedMenuItem::quit goes straight to NSApp.terminate and
-            // bypasses our RunEvent::ExitRequested hook, so the renderer
-            // never gets the chance to show the confirm modal.
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
-                let quit_item = MenuItem::with_id(app, "cc_quit", "Quit Code Cave", true, Some("Cmd+Q"))?;
-                let app_menu = SubmenuBuilder::new(app, "Code Cave")
-                    .item(&quit_item)
-                    .build()?;
-                // Setting a custom menu replaces the macOS default menu — we
-                // have to re-add Edit explicitly or Cmd+C/V/X/A stop working
-                // (xterm relies on the system clipboard shortcuts).
-                let edit_menu = SubmenuBuilder::new(app, "Edit")
-                    .item(&PredefinedMenuItem::undo(app, None)?)
-                    .item(&PredefinedMenuItem::redo(app, None)?)
-                    .separator()
-                    .item(&PredefinedMenuItem::cut(app, None)?)
-                    .item(&PredefinedMenuItem::copy(app, None)?)
-                    .item(&PredefinedMenuItem::paste(app, None)?)
-                    .item(&PredefinedMenuItem::select_all(app, None)?)
-                    .build()?;
-                let menu = MenuBuilder::new(app)
-                    .item(&app_menu)
-                    .item(&edit_menu)
-                    .build()?;
-                app.set_menu(menu)?;
-            }
 
             Ok(())
         })
