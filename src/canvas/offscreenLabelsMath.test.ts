@@ -77,10 +77,18 @@ describe("computeOffscreenLabel", () => {
     expect(computeOffscreenLabel(n, VP, PAD)).toBeNull();
   });
 
-  it("returns null when the pane partially overlaps the viewport", () => {
-    // pane at right edge overlapping
-    const n = mkNode({ x: 950, y: 100, width: 200, height: 80 });
+  it("returns null when the pane partially overlaps and its center is inside", () => {
+    // pane at left edge: x=-50, width=200 → center at x=50 (inside VP).
+    const n = mkNode({ x: -50, y: 100, width: 200, height: 80 });
     expect(computeOffscreenLabel(n, VP, PAD)).toBeNull();
+  });
+
+  it("returns a label when the pane partially overlaps but its center is off-screen", () => {
+    // pane straddles right edge: x=950, width=200 → center at x=1050 (outside VP, W=1000).
+    const n = mkNode({ x: 950, y: 100, width: 200, height: 80 });
+    const r = computeOffscreenLabel(n, VP, PAD);
+    expect(r).not.toBeNull();
+    expect(r!.edge).toBe("right");
   });
 
   it("returns null when title is null", () => {
