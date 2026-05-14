@@ -100,21 +100,15 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
                 }
             }
 
-            // Try to find the session claude is currently writing.
-            // 1) lsof claude's open files (works only if claude keeps
-            //    the .jsonl open; in practice it closes after writes)
-            // 2) Fallback: scan ALL of ~/.claude/projects/ for a .jsonl
-            //    freshly modified after this pane started
+            // Find the session this pane's claude is currently writing,
+            // via lsof on THIS claude.pid's open files. Used to be a
+            // global mtime scan as a fallback, but that cross-contaminated
+            // multi-pane setups: pane A would adopt pane B's jsonl
+            // (cwd + session_id) and corrupt its DB row. Per-pane scan
+            // of project_dir (from tracked_cwd) below is the right path.
             let active_session = claude_info
                 .as_ref()
-                .and_then(|(pid, _)| find_claude_active_session(*pid))
-                .or_else(|| {
-                    if claude_alive {
-                        find_recent_session_globally(started_at)
-                    } else {
-                        None
-                    }
-                });
+                .and_then(|(pid, _)| find_claude_active_session(*pid, &tracked_cwd));
 
             // cwd tracking has DIFFERENT rules based on mode:
             //   - Terminal mode (claude not running): follow shell's
@@ -131,6 +125,20 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
                     if session_cwd != &tracked_cwd {
                         tracked_cwd = session_cwd.clone();
                         update_node_cwd_if_changed(&app, &node_id, session_cwd);
+                    }
+                } else if !promoted {
+                    // First tick where claude went live but no .jsonl yet
+                    // (user did `cd /B && claude` faster than one watcher
+                    // tick). The shell's cwd is the dir claude was launched
+                    // from — the right project root for both plain and -w
+                    // mode. Authoritative active_session.cwd will overwrite
+                    // this once the jsonl appears.
+                    if let Some(pid) = pty_pid {
+                        if let Some(shell_cwd) = get_process_cwd(pid) {
+                            if shell_cwd != tracked_cwd {
+                                tracked_cwd = shell_cwd;
+                            }
+                        }
                     }
                 }
             } else if let Some(pid) = pty_pid {
@@ -362,12 +370,26 @@ fn find_claude_process_under(root_pid: u32) -> Option<(u32, Vec<String>)> {
 /// the session under the MAIN project root's project dir. lsof on the
 /// open file is the only signal that tells us where the session actually
 /// lives.
-fn find_claude_active_session(pid: u32) -> Option<(String, String)> {
+/// Find the `.jsonl` `pid`'s claude is currently writing, and return
+/// `(resume_cwd, session_id)`. `resume_cwd` is the cwd to use for
+/// `claude --resume` on respawn — which is **not** necessarily the cwd
+/// claude itself is running in (worktree mode runs in the worktree but
+/// the session file lives in the main project's encoded dir).
+///
+/// Trust ordering: if the .jsonl's parent dir matches `encode(tracked_cwd)`,
+/// tracked_cwd is already correct (and surviving `-w` mode). Only when the
+/// dirs differ — typically `/resume` cross-project — do we fall back to
+/// reading the cwd field out of the jsonl content.
+fn find_claude_active_session(pid: u32, tracked_cwd: &str) -> Option<(String, String)> {
     let output = std::process::Command::new("lsof")
         .args(["-p", &pid.to_string(), "-F", "n"])
         .output()
         .ok()?;
     let s = String::from_utf8_lossy(&output.stdout);
+    let expected_parent = encode_claude_project_dir(tracked_cwd)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string());
     for line in s.lines() {
         let Some(path_str) = line.strip_prefix('n') else { continue };
         if !path_str.contains("/.claude/projects/") || !path_str.ends_with(".jsonl") {
@@ -378,9 +400,13 @@ fn find_claude_active_session(pid: u32) -> Option<(String, String)> {
         if !is_uuid_like(stem) {
             continue;
         }
-        if let Some(cwd) = read_session_cwd(p) {
-            return Some((cwd, stem.to_string()));
-        }
+        let parent_name = p.parent().and_then(|d| d.file_name()).and_then(|s| s.to_str());
+        let cwd = if parent_name.is_some() && parent_name.map(|s| s.to_string()) == expected_parent {
+            tracked_cwd.to_string()
+        } else {
+            read_session_cwd(p)?
+        };
+        return Some((cwd, stem.to_string()));
     }
     None
 }
@@ -402,39 +428,6 @@ fn read_session_cwd(jsonl_path: &std::path::Path) -> Option<String> {
         }
     }
     None
-}
-
-/// Scan all `~/.claude/projects/*/<uuid>.jsonl` files and return
-/// `(cwd, session_id)` for the most-recently-modified one that's newer
-/// than `since`. This is the fallback when lsof can't find an open
-/// `.jsonl` — claude appears to write-then-close rather than keep its
-/// session file held open.
-fn find_recent_session_globally(since: SystemTime) -> Option<(String, String)> {
-    let home = dirs::home_dir()?;
-    let projects_dir = home.join(".claude").join("projects");
-    let entries = std::fs::read_dir(&projects_dir).ok()?;
-    let mut best: Option<(SystemTime, std::path::PathBuf, String)> = None;
-    for entry in entries.flatten() {
-        let project_path = entry.path();
-        if !project_path.is_dir() { continue }
-        let Ok(inner) = std::fs::read_dir(&project_path) else { continue };
-        for f in inner.flatten() {
-            let path = f.path();
-            let Some(ext) = path.extension().and_then(|s| s.to_str()) else { continue };
-            if ext != "jsonl" { continue }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
-            if !is_uuid_like(stem) { continue }
-            let Ok(meta) = f.metadata() else { continue };
-            let Ok(mtime) = meta.modified() else { continue };
-            if mtime <= since { continue }
-            if best.as_ref().map_or(true, |(t, _, _)| mtime > *t) {
-                best = Some((mtime, path.clone(), stem.to_string()));
-            }
-        }
-    }
-    let (_, path, id) = best?;
-    let cwd = read_session_cwd(&path)?;
-    Some((cwd, id))
 }
 
 /// Returns the current working directory of `pid` via macOS `lsof`.
