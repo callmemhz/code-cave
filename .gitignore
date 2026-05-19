@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Personal workflow artifacts (superpower skills output, scratch TODOs)
+docs/TODO.md
+docs/superpowers/
