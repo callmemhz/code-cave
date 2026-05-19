@@ -28,7 +28,7 @@ Built with Tauri 2 + React 19 + [xyflow](https://github.com/xyflow/xyflow) + [xt
 Requires [Rust](https://rustup.rs/), Node 20+, and Xcode command-line tools.
 
 ```sh
-git clone https://github.com/<you>/vibe-space.git
+git clone https://github.com/callmemhz/vibe-space.git
 cd vibe-space
 npm install
 npm run tauri build
