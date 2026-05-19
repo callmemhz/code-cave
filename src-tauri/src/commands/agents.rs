@@ -36,7 +36,7 @@ pub fn agent_spawn(
         AgentKind::Codex => build_codex(resume_id.as_deref(), &extra_args),
     };
     crate::log_line!(
-        "[code-cave] agent_spawn node={} cwd={} program={} args={:?} resume_id={:?}",
+        "[vibe-space] agent_spawn node={} cwd={} program={} args={:?} resume_id={:?}",
         node_id, cwd, launch.program, launch.args, resume_id
     );
 
@@ -142,8 +142,8 @@ pub(crate) fn encode_claude_project_dir(cwd: &str) -> PathBuf {
     };
     // Claude encodes the cwd by replacing every "/" AND every "." with "-"
     // (the leading slash becomes a leading dash). So
-    // /Users/.../code-cave/.claude/worktrees/hinter becomes
-    // -Users-...-code-cave--claude-worktrees-hinter (note the double dash
+    // /Users/.../vibe-space/.claude/worktrees/hinter becomes
+    // -Users-...-vibe-space--claude-worktrees-hinter (note the double dash
     // where ".claude" used to be). Verified by inspection of
     // ~/.claude/projects/.
     let dashed: String = expanded
@@ -296,7 +296,7 @@ pub fn repair_worktree_resume_ids(db: &Db) {
         let new_json = serde_json::to_string(&v).unwrap_or(data_json);
         let _ = db::nodes::update_data(db, &id, &new_json);
         crate::log_line!(
-            "[code-cave] repair worktree node {} resume_id {:?} -> {:?}",
+            "[vibe-space] repair worktree node {} resume_id {:?} -> {:?}",
             id, current, new_id
         );
     }
@@ -356,14 +356,14 @@ mod tests {
     #[test]
     fn resolve_storage_dir_worktree_mode() {
         let args: Vec<String> = ["-w", "hinter"].iter().map(|s| s.to_string()).collect();
-        let p = resolve_session_storage_dir("/Users/me/src/code-cave", &args);
-        assert!(p.ends_with("-Users-me-src-code-cave--claude-worktrees-hinter"), "got {}", p.display());
+        let p = resolve_session_storage_dir("/Users/me/src/vibe-space", &args);
+        assert!(p.ends_with("-Users-me-src-vibe-space--claude-worktrees-hinter"), "got {}", p.display());
     }
 
     #[test]
     fn resolve_storage_dir_plain_mode() {
-        let p = resolve_session_storage_dir("/Users/me/src/code-cave", &[]);
-        assert!(p.ends_with("-Users-me-src-code-cave"), "got {}", p.display());
+        let p = resolve_session_storage_dir("/Users/me/src/vibe-space", &[]);
+        assert!(p.ends_with("-Users-me-src-vibe-space"), "got {}", p.display());
     }
 
     #[test]

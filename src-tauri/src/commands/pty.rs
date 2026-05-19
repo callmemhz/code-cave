@@ -86,7 +86,7 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
                 last_claude_pid = None;
             }
             crate::log_line!(
-                "[code-cave] watcher node={} pty_pid={:?} claude_alive={} promoted={}",
+                "[vibe-space] watcher node={} pty_pid={:?} claude_alive={} promoted={}",
                 node_id, pty_pid, claude_alive, promoted,
             );
             if !claude_alive && !promoted {
@@ -96,7 +96,7 @@ fn start_terminal_to_claude_watcher(app: AppHandle, node_id: String, cwd: String
                 {
                     let s = String::from_utf8_lossy(&o.stdout);
                     if !s.trim().is_empty() {
-                        crate::log_line!("[code-cave] ps claude-like:\n{}", s);
+                        crate::log_line!("[vibe-space] ps claude-like:\n{}", s);
                     }
                 }
             }

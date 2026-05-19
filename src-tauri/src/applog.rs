@@ -13,7 +13,7 @@ pub fn init(path: &Path) {
     if let Ok(f) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = FILE.set(Mutex::new(f));
         let _ = FILE.get().unwrap().lock().map(|mut g| {
-            let _ = writeln!(g, "\n===== code-cave session @ {} =====", now_iso());
+            let _ = writeln!(g, "\n===== vibe-space session @ {} =====", now_iso());
         });
     }
 }

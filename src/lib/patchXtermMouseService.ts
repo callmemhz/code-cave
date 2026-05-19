@@ -33,7 +33,7 @@ type XtermMouseService = {
   ) =>
     | { col: number; row: number; x: number; y: number }
     | undefined;
-  __codeCavePatched?: boolean;
+  __vibeSpacePatched?: boolean;
 };
 
 function resolveElementScale(
@@ -111,9 +111,9 @@ export function patchXtermMouseService(terminal: Terminal): boolean {
   const rs = core._core?._renderService;
   const cs = core._core?._charSizeService;
   if (!ms || typeof ms.getCoords !== "function" || !rs || !cs) return false;
-  if (ms.__codeCavePatched) return true;
+  if (ms.__vibeSpacePatched) return true;
 
-  ms.__codeCavePatched = true;
+  ms.__vibeSpacePatched = true;
   const originalGetCoords = ms.getCoords.bind(ms);
 
   ms.getCoords = (event, element, cols, rows, isSelection = false) => {

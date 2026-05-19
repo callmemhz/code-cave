@@ -5,12 +5,12 @@ use tauri::{
 };
 
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Show Code Cave", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Show Vibe Space", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit (kills PTYs)", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
     let _tray = TrayIconBuilder::new()
-        .tooltip("Code Cave")
+        .tooltip("Vibe Space")
         .icon(app.default_window_icon().expect("icon").clone())
         .menu(&menu)
         .on_menu_event(|app, ev| match ev.id.as_ref() {

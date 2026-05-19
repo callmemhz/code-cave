@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "code-cave",
+  "productName": "vibe-space",
   "version": "0.1.0",
-  "identifier": "dev.codecave.app",
+  "identifier": "dev.vibespace.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "code-cave",
+        "title": "vibe-space",
         "width": 800,
         "height": 600,
         "visible": true,

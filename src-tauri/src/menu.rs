@@ -41,8 +41,8 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     // Custom "cc_quit" item (not PredefinedMenuItem::quit) so we can route
     // through RunEvent::ExitRequested → renderer confirm modal instead of
     // NSApp.terminate'ing without warning.
-    let quit_item = MenuItem::with_id(app, "cc_quit", "Quit Code Cave", true, Some("Cmd+Q"))?;
-    let app_menu = SubmenuBuilder::new(app, "code-cave")
+    let quit_item = MenuItem::with_id(app, "cc_quit", "Quit Vibe Space", true, Some("Cmd+Q"))?;
+    let app_menu = SubmenuBuilder::new(app, "vibe-space")
         .item(&PredefinedMenuItem::about(app, None, None)?)
         .separator()
         .item(&PredefinedMenuItem::services(app, None)?)
@@ -99,7 +99,7 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, ev: MenuEvent) {
     let id = ev.id().as_ref().to_string();
     if id == "cc_quit" {
-        crate::log_line!("[code-cave] cc_quit menu -> emit app:quit-requested");
+        crate::log_line!("[vibe-space] cc_quit menu -> emit app:quit-requested");
         let _ = app.emit("app:quit-requested", ());
         return;
     }

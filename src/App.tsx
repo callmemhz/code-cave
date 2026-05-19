@@ -31,7 +31,7 @@ export default function App() {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     listen("app:quit-requested", () => {
-      console.log("[code-cave] app:quit-requested received");
+      console.log("[vibe-space] app:quit-requested received");
       setQuitPrompt(true);
     })
       .then((fn) => { unlisten = fn; })
@@ -69,7 +69,7 @@ export default function App() {
             }}
           >
             <div style={{ marginBottom: 14, lineHeight: 1.5 }}>
-              Quit Code Cave?
+              Quit Vibe Space?
               <div style={{ marginTop: 6, opacity: 0.65 }}>
                 Running terminals and Claude/Codex sessions will be killed.
                 Scrollback and cwd are saved.

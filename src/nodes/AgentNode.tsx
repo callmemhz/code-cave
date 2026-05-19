@@ -65,7 +65,7 @@ export function AgentNode({ data, kind }: NodeProps<AgentFlowNode> & { kind: Age
     // Natural Text Editing preset uses for Shift+Return.
     term.attachCustomKeyEventHandler((ev) => {
       if (ev.type === "keydown" && ev.key === "Enter") {
-        console.log("[code-cave] Enter keydown", {
+        console.log("[vibe-space] Enter keydown", {
           shiftKey: ev.shiftKey, metaKey: ev.metaKey, ctrlKey: ev.ctrlKey, altKey: ev.altKey,
         });
       }
