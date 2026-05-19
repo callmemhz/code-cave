@@ -9,6 +9,12 @@ style.textContent = `
   *, *::before, *::after { box-sizing: border-box; }
   .react-flow__node { background: transparent; border: none; padding: 0; }
 
+  /* colorMode="dark" sets .react-flow's --xy-background-color to #141414,
+     which paints an opaque layer over our BackgroundLayer canvas (which
+     sits behind <ReactFlow> as a sibling). Force the root transparent so
+     the animated background shows through; body bg (#0d0d0d) is dark enough. */
+  .react-flow { --xy-background-color: transparent; }
+
   /* Drag handle hover/active feedback. */
   .node-drag-handle:active { cursor: grabbing; }
 
